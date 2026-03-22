@@ -1,170 +1,116 @@
 using UnityEngine;
-using Photon.Pun;
-using Photon.Realtime;
-using UnityEngine.UI;
+using TMPro;
+using Fusion;
 
-/// <summary>
-/// Quản lý trạng thái game chính
-/// - Đồng bộ trạng thái game
-/// - Quản lý pause/resume
-/// - Quản lý UI trong game
-/// - Xử lý game over và kết thúc
-/// </summary>
-public class GameManager : MonoBehaviourPun
+public class GameManager : NetworkBehaviour
 {
     public static GameManager Instance { get; private set; }
 
-    [Header("Game State")]
-    [SerializeField] private bool isGameActive = true;
-    [SerializeField] private int alivePlayers = 4;
+    [Networked] public bool IsGameActive  { get; private set; }
+    [Networked] public bool IsPaused      { get; private set; }
+    [Networked] public int  AlivePlayers  { get; private set; }
 
     [Header("UI")]
-    [SerializeField] private Text playerCountText;
-    [SerializeField] private Text gameStatusText;
-    [SerializeField] private Canvas gameUI;
+    [SerializeField] private TMP_Text playerCountText;
+    [SerializeField] private TMP_Text gameStatusText;
 
-    [Header("Network")]
-    [SerializeField] private float networkSyncInterval = 1f;
-    private float lastNetworkSync = 0f;
+    private ChangeDetector _changes;
+    private float _lastSync = 0f;
 
     private void Awake()
     {
-        if (Instance != null && Instance != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
-
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
     }
 
-    private void Start()
+    public override void Spawned()
     {
-        Debug.Log("[GameManager] Game bắt đầu!");
-        UpdatePlayerCount();
-        UpdateGameStatus();
+        _changes = GetChangeDetector(ChangeDetector.Source.SimulationState);
 
-        // Tối ưu network settings
-        PhotonNetwork.SendRate = 60; // 60 messages per second
-        PhotonNetwork.SerializationRate = 60; // 60 serializations per second
+        if (HasStateAuthority)
+        {
+            AlivePlayers = CountPlayers();
+            IsGameActive = true;
+            IsPaused     = false;
+        }
+        Debug.Log($"[GameManager] Bắt đầu với {AlivePlayers} người chơi!");
+        UpdateUI();
     }
 
-    private void Update()
+    public override void Render()
     {
-        // Cập nhật network sync
-        if (Time.time - lastNetworkSync >= networkSyncInterval)
+        foreach (var change in _changes.DetectChanges(this))
         {
-            lastNetworkSync = Time.time;
-            SyncGameState();
-        }
-
-        // Kiểm tra input tạm dừng
-        if (Input.GetKeyDown(KeyCode.P))
-        {
-            TogglePause();
-        }
-    }
-
-    /// <summary>Cập nhật số lượng player còn lại</summary>
-    private void UpdatePlayerCount()
-    {
-        if (PhotonNetwork.InRoom)
-        {
-            int activePlayers = CountActivePlayers();
-            playerCountText.text = $"Player: {activePlayers}/{PhotonNetwork.CurrentRoom.MaxPlayers}";
+            switch (change)
+            {
+                case nameof(IsPaused):
+                    Time.timeScale = IsPaused ? 0f : 1f;
+                    UpdateUI();
+                    break;
+                case nameof(IsGameActive):
+                    UpdateUI();
+                    break;
+            }
         }
     }
 
-    /// <summary>Đếm số lượng player còn sống</summary>
-    private int CountActivePlayers()
+    public override void FixedUpdateNetwork()
     {
-        return PhotonNetwork.CurrentRoom.Players.Count;
-    }
+        if (!HasStateAuthority) return;
 
-    /// <summary>Cập nhật trạng thái game</summary>
-    private void UpdateGameStatus()
-    {
-        if (isGameActive)
+        if (Runner.SimulationTime - _lastSync >= 1f)
         {
-            gameStatusText.text = "Game - Đang chơi";
-            gameStatusText.color = Color.green;
+            _lastSync    = Runner.SimulationTime;
+            AlivePlayers = CountPlayers();
         }
-        else
-        {
-            gameStatusText.text = "Game - Tạm dừng";
-            gameStatusText.color = Color.yellow;
-        }
+
+        if (GetInput(out NetworkInputData input) && input.IsPausing)
+            IsPaused = !IsPaused;
     }
 
-    /// <summary>Đồng bộ trạng thái game trên network</summary>
-    private void SyncGameState()
-    {
-        if (!PhotonNetwork.IsMasterClient)
-            return;
+    private void Update() => UpdateUI();
 
-        ExitGames.Client.Photon.Hashtable gameProps = new ExitGames.Client.Photon.Hashtable
-        {
-            { "activePlayers", CountActivePlayers() },
-            { "gameActive", isGameActive }
-        };
-
-        PhotonNetwork.CurrentRoom.SetCustomProperties(gameProps);
-    }
-
-    /// <summary>Tạm dừng/tiếp tục game</summary>
-    public void TogglePause()
-    {
-        isGameActive = !isGameActive;
-        Time.timeScale = isGameActive ? 1f : 0f;
-        UpdateGameStatus();
-
-        // Sync trạng thái pause tới tất cả player
-        photonView.RPC("RPC_SetPause", RpcTarget.AllBuffered, !isGameActive);
-    }
-
-    [PunRPC]
-    private void RPC_SetPause(bool paused)
-    {
-        isGameActive = !paused;
-        Time.timeScale = isGameActive ? 1f : 0f;
-        UpdateGameStatus();
-    }
-
-    /// <summary>Một player bị loại (chết/bị đuổi)</summary>
     public void OnPlayerEliminated(string playerName)
     {
-        Debug.Log($"[GameManager] {playerName} đã bị loại!");
-
-        alivePlayers--;
-        UpdatePlayerCount();
-
-        // Kiểm tra nếu chỉ còn 1 player
-        if (alivePlayers <= 1)
-        {
-            EndGame();
-        }
+        if (!HasStateAuthority) return;
+        Debug.Log($"[GameManager] {playerName} bị loại!");
+        AlivePlayers--;
+        if (AlivePlayers <= 1) EndGame();
     }
 
-    /// <summary>Kết thúc game</summary>
     public void EndGame()
     {
-        isGameActive = false;
-        gameStatusText.text = "Game - Kết thúc!";
-        gameStatusText.color = Color.red;
-
+        if (!HasStateAuthority) return;
+        IsGameActive = false;
         Debug.Log("[GameManager] Game kết thúc!");
-
-        // Cho phép quay lại lobby sau 3 giây
         Invoke(nameof(ReturnToLobby), 3f);
     }
 
-    /// <summary>Quay lại lobby</summary>
     private void ReturnToLobby()
     {
-        PhotonNetwork.LeaveRoom();
-        PhotonNetwork.LoadLevel("LobbyScene"); // Tên scene lobby
+        if (!HasStateAuthority) return;
+        Runner.LoadScene(SceneRef.FromIndex(0));
     }
 
-    /// <summary>Lấy trạng thái game</summary>
-    public bool IsGameActive => isGameActive;
+    private int CountPlayers()
+    {
+        int c = 0;
+        foreach (var _ in Runner.ActivePlayers) c++;
+        return c;
+    }
+
+    private void UpdateUI()
+    {
+        if (playerCountText != null && Runner != null)
+            playerCountText.text = $"Players: {AlivePlayers}";
+
+        if (gameStatusText == null) return;
+
+        if (!IsGameActive)
+        { gameStatusText.text = "Game - Kết thúc!"; gameStatusText.color = Color.red; }
+        else if (IsPaused)
+        { gameStatusText.text = "Game - Tạm dừng";  gameStatusText.color = Color.yellow; }
+        else
+        { gameStatusText.text = "Game - Đang chơi"; gameStatusText.color = Color.green; }
+    }
 }

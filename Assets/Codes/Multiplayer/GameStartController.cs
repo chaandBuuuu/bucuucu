@@ -1,105 +1,57 @@
 using UnityEngine;
-using Photon.Pun;
-using Photon.Realtime;
-using UnityEngine.UI;
-using UnityEngine.SceneManagement;
+using TMPro;
+using Fusion;
 
-/// <summary>
-/// Auto-start game khi tất cả 4 player sẵn sàng
-/// Đơn giản: kiểm tra số player + tất cả đã chọn character
-/// </summary>
-public class GameStartController : MonoBehaviourPun
+public class GameStartController : NetworkBehaviour
 {
-    [Header("Game Start Config")]
-    [SerializeField] private int requiredPlayersToStart = 4;
-    [SerializeField] private float checkInterval = 1f;
+    [Header("Config")]
+    [SerializeField] private int   requiredPlayers = 4;
+    [SerializeField] private float checkInterval   = 1f;
 
     [Header("UI")]
-    [SerializeField] private Text statusText;
+    [SerializeField] private TMP_Text statusText;
 
-    private float lastCheckTime = 0f;
-    private bool gameStarted = false;
+    [Networked] private int  ReadyCount   { get; set; }
+    [Networked] private bool GameStarting { get; set; }
 
-    private void Start()
+    private float _lastCheck = 0f;
+
+    public override void Spawned()
+        => Debug.Log("[GameStartController] Chờ tất cả player...");
+
+    public override void FixedUpdateNetwork()
     {
-        if (!PhotonNetwork.InRoom)
-        {
-            Debug.LogError("[GameStartController] Not in a room!");
-            return;
-        }
-
-        Debug.Log("[GameStartController] Waiting for all players to be ready...");
+        if (!Runner.IsServer || GameStarting) return;
+        if (Runner.SimulationTime - _lastCheck < checkInterval) return;
+        _lastCheck = Runner.SimulationTime;
+        CheckIfCanStart();
     }
 
     private void Update()
     {
-        if (gameStarted)
-            return;
-
-        // Check mỗi 1 giây
-        if (Time.time - lastCheckTime >= checkInterval)
-        {
-            lastCheckTime = Time.time;
-            CheckIfCanStart();
-        }
+        if (statusText != null)
+            statusText.text = $"Sẵn sàng: {ReadyCount}/{requiredPlayers}";
     }
 
     private void CheckIfCanStart()
     {
-        // Return if not in room yet
-        if (!PhotonNetwork.InRoom || PhotonNetwork.CurrentRoom == null)
+        int playerCount = 0;
+        foreach (var _ in Runner.ActivePlayers) playerCount++;
+
+        int readyCount = 0;
+        foreach (var player in Runner.ActivePlayers)
+            if (Runner.TryGetPlayerObject(player, out NetworkObject obj))
+                if (obj.GetComponent<LobbyPlayerController>() != null)
+                    readyCount++;
+
+        ReadyCount = readyCount;
+        Debug.Log($"[GameStartController] Players: {playerCount}, Ready: {readyCount}");
+
+        if (playerCount >= requiredPlayers && readyCount >= requiredPlayers)
         {
-            Debug.Log("[GameStartController] Waiting to join room...");
-            return;
+            GameStarting = true;
+            Debug.Log("[GameStartController] Bắt đầu game!");
+            Runner.LoadScene(SceneRef.FromIndex(2));
         }
-
-        // Kiểm tra số lượng player
-        int playerCount = PhotonNetwork.CurrentRoom.PlayerCount;
-        
-        // Kiểm tra tất cả đã chọn character
-        bool allSelectedCharacter = CheckAllPlayersSelectedCharacter();
-
-        string status = $"Ready: {playerCount}/{requiredPlayersToStart}";
-
-        if (statusText != null)
-            statusText.text = status;
-
-        Debug.Log($"[GameStartController] Players: {playerCount}, All selected: {allSelectedCharacter}");
-
-        // Điều kiện start:
-        // - Có đủ 4 người
-        // - Tất cả đã chọn character
-        if (playerCount >= requiredPlayersToStart && allSelectedCharacter)
-        {
-            Debug.Log("[GameStartController] All ready! Starting game...");
-            StartGameScene();
-        }
-    }
-
-    private bool CheckAllPlayersSelectedCharacter()
-    {
-        if (!PhotonNetwork.InRoom)
-            return false;
-
-        foreach (Player player in PhotonNetwork.CurrentRoom.Players.Values)
-        {
-            // Check if player has CharacterIndex property
-            if (!player.CustomProperties.ContainsKey("CharacterIndex"))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private void StartGameScene()
-    {
-        if (gameStarted)
-            return;
-
-        gameStarted = true;
-        Debug.Log("[GameStartController] Loading GameScene...");
-        PhotonNetwork.LoadLevel("GameScene");
     }
 }

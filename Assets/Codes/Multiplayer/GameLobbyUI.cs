@@ -1,186 +1,82 @@
 using UnityEngine;
 using UnityEngine.UI;
-using Photon.Pun;
-using Photon.Realtime;
-using ExitGames.Client.Photon;
+using TMPro;
 
-/// <summary>
-/// Quản lý giao diện Lobby đơn giản
-/// - Chọn/Tạo phòng
-/// - Chọn nhân vật (4 lựa chọn)
-/// </summary>
-public class GameLobbyUI : MonoBehaviourPunCallbacks
+public class GameLobbyUI : MonoBehaviour
 {
-    [Header("UI References - Room Selection")]
-    [SerializeField] private GameObject roomPanel;
-    [SerializeField] private Button hostButton;
-    [SerializeField] private Button joinButton;
-    [SerializeField] private InputField roomNameInput;
+    [Header("Room Panel")]
+    [SerializeField] private Button         hostButton;
+    [SerializeField] private Button         joinButton;
+    [SerializeField] private TMP_InputField roomNameInput;
+    [SerializeField] private TMP_Text       statusText;
 
-    [Header("UI References - Character Select")]
-    [SerializeField] private GameObject characterSelectPanel;
-    [SerializeField] private Button[] characterButtons = new Button[4];
-    [SerializeField] private Text selectedCharacterText;
-
-    [Header("Character Data")]
-    private string[] characterNameData = { "Hacker", "Ghost Hunter", "Priest", "Scientist" };
-    private Color[] characterColors = { Color.red, Color.green, Color.yellow, new Color(0, 0, 1) };
-    private int selectedCharacterIndex = -1;
-
-    [Header("Status")]
-    [SerializeField] private Text statusText;
+    [Header("References")]
+    [SerializeField] private GameObject canvasToHide; // Kéo Canvas vào đây
 
     private void Start()
     {
-        InitializeUI();
-        ConnectToPhoton();
-    }
-
-    private void InitializeUI()
-    {
-        // Room Panel
         hostButton.onClick.AddListener(OnHostClicked);
         joinButton.onClick.AddListener(OnJoinClicked);
-
-        // Character Select Panel
-        for (int i = 0; i < characterButtons.Length; i++)
-        {
-            int index = i;
-            characterButtons[i].onClick.AddListener(() => SelectCharacter(index));
-        }
-
-        ShowRoomPanel();
+        RegisterEvents();
     }
 
-    private void ConnectToPhoton()
+    private void OnDestroy() => UnregisterEvents();
+
+    private void RegisterEvents()
     {
-        if (!PhotonNetwork.IsConnected)
-        {
-            Debug.Log("[GameLobbyUI] Connecting to Photon...");
-            PhotonNetwork.ConnectUsingSettings();
-        }
+        if (FusionNetworkManager.Instance == null) return;
+        FusionNetworkManager.Instance.OnJoinedSessionEvent += OnJoinedSession;
+        FusionNetworkManager.Instance.OnJoinFailedEvent    += OnJoinFailed;
     }
 
-    // ==================== Panel Management ====================
-
-    private void ShowRoomPanel()
+    private void UnregisterEvents()
     {
-        roomPanel.SetActive(true);
-        characterSelectPanel.SetActive(false);
+        if (FusionNetworkManager.Instance == null) return;
+        FusionNetworkManager.Instance.OnJoinedSessionEvent -= OnJoinedSession;
+        FusionNetworkManager.Instance.OnJoinFailedEvent    -= OnJoinFailed;
     }
 
-    private void ShowCharacterSelectPanel()
+    private async void OnHostClicked()
     {
-        Debug.Log("[GameLobbyUI] Showing CharacterSelectPanel");
-        
-        if (characterSelectPanel == null)
-        {
-            Debug.LogError("[GameLobbyUI] characterSelectPanel is NOT assigned in Inspector!");
-            return;
-        }
-        
-        roomPanel.SetActive(false);
-        characterSelectPanel.SetActive(true);
-        Debug.Log("[GameLobbyUI] CharacterSelectPanel is now active");
-        UpdateCharacterSelectUI();
+        string name = roomNameInput.text.Trim();
+        if (string.IsNullOrEmpty(name)) name = "Room_" + Random.Range(1000, 9999);
+        SetButtonsInteractable(false);
+        UpdateStatus($"Đang tạo phòng: {name}...");
+        await FusionNetworkManager.Instance.CreateSession(name);
     }
 
-    // ==================== Room Management ====================
-
-    private void OnHostClicked()
+    private async void OnJoinClicked()
     {
-        string roomName = roomNameInput.text.Trim();
-        if (string.IsNullOrEmpty(roomName))
-            roomName = "Room_" + Random.Range(1000, 9999);
-
-        RoomOptions roomOptions = new RoomOptions
-        {
-            MaxPlayers = 4,
-            IsOpen = true,
-            IsVisible = true
-        };
-
-        PhotonNetwork.CreateRoom(roomName, roomOptions);
-        UpdateStatus($"Creating room: {roomName}...");
+        string name = roomNameInput.text.Trim();
+        if (string.IsNullOrEmpty(name)) { UpdateStatus("Vui lòng nhập tên phòng!"); return; }
+        SetButtonsInteractable(false);
+        UpdateStatus($"Đang vào phòng: {name}...");
+        await FusionNetworkManager.Instance.JoinSession(name);
     }
 
-    private void OnJoinClicked()
+    private void OnJoinedSession()
     {
-        string roomName = roomNameInput.text.Trim();
-        if (string.IsNullOrEmpty(roomName))
-        {
-            UpdateStatus("Please enter room name!");
-            return;
-        }
-
-        PhotonNetwork.JoinRoom(roomName);
-        UpdateStatus($"Joining room: {roomName}...");
+        UpdateStatus("Đã vào phòng! Đang chuyển sang Lobby...");
+        // Ẩn canvas Menu đi
+        if (canvasToHide != null)
+            canvasToHide.SetActive(false);
     }
 
-    // ==================== Character Selection ====================
-
-    private void SelectCharacter(int characterIndex)
+    private void OnJoinFailed(string reason)
     {
-        selectedCharacterIndex = characterIndex;
-        
-        // Set player properties
-        Hashtable playerProperties = new Hashtable
-        {
-            { "CharacterIndex", characterIndex }
-        };
-        PhotonNetwork.LocalPlayer.SetCustomProperties(playerProperties);
-
-        UpdateCharacterSelectUI();
-        UpdateStatus($"Selected: {characterNameData[characterIndex]}");
+        UpdateStatus($"Thất bại: {reason}");
+        SetButtonsInteractable(true);
     }
 
-    private void UpdateCharacterSelectUI()
+    private void SetButtonsInteractable(bool value)
     {
-        if (selectedCharacterIndex >= 0)
-        {
-            selectedCharacterText.text = $"Chon: {characterNameData[selectedCharacterIndex]}";
-            selectedCharacterText.color = characterColors[selectedCharacterIndex];
-        }
+        hostButton.interactable = value;
+        joinButton.interactable = value;
     }
 
-    // ==================== Photon Callbacks ====================
-
-    public override void OnConnected()
+    private void UpdateStatus(string msg)
     {
-        Debug.Log("[GameLobbyUI] Connected to Photon");
-        UpdateStatus("Connected! Create or join a room");
-    }
-
-    public override void OnDisconnected(DisconnectCause cause)
-    {
-        Debug.LogWarning($"[GameLobbyUI] Disconnected: {cause}");
-        UpdateStatus($"Disconnected: {cause}");
-    }
-
-    public override void OnJoinedRoom()
-    {
-        Debug.Log($"[GameLobbyUI] Joined room: {PhotonNetwork.CurrentRoom.Name}");
-        UpdateStatus($"Room: {PhotonNetwork.CurrentRoom.Name} ({PhotonNetwork.CurrentRoom.PlayerCount}/4)");
-        ShowCharacterSelectPanel();
-    }
-
-    public override void OnJoinRoomFailed(short returnCode, string message)
-    {
-        Debug.LogError($"[GameLobbyUI] Failed to join room: {message}");
-        UpdateStatus($"Failed to join: {message}");
-    }
-
-    public override void OnCreateRoomFailed(short returnCode, string message)
-    {
-        Debug.LogError($"[GameLobbyUI] Failed to create room: {message}");
-        UpdateStatus($"Failed to create: {message}");
-        ShowRoomPanel();
-    }
-
-    private void UpdateStatus(string message)
-    {
-        Debug.Log($"[GameLobbyUI] {message}");
-        if (statusText != null)
-            statusText.text = message;
+        Debug.Log($"[GameLobbyUI] {msg}");
+        if (statusText != null) statusText.text = msg;
     }
 }

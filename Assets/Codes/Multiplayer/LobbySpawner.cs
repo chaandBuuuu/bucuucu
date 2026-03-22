@@ -1,68 +1,68 @@
 using UnityEngine;
-using Photon.Pun;
+using Fusion;
+using Fusion.Sockets;
+using UnityEngine.UI;
+using TMPro;
 
-/// <summary>
-/// Spawn players khi vào lobby
-/// </summary>
-public class LobbySpawner : MonoBehaviourPunCallbacks
+public class LobbySpawner : FusionCallbacksBase
 {
     [Header("Spawn Settings")]
-    [SerializeField] private Transform[] spawnPoints = new Transform[4];
+    [SerializeField] private NetworkObject lobbyPlayerPrefab;
+    [SerializeField] private Transform[]   spawnPoints = new Transform[4];
 
-    [SerializeField] private string lobbyPlayerPrefabName = "LobbyPlayer";
+    [Header("UI - chỉ Host thấy")]
+    [SerializeField] private GameObject startButtonObj;
 
-    public override void OnJoinedRoom()
+    private NetworkRunner _runner;
+
+    private void Start()
     {
-        Debug.Log("[LobbySpawner] Joined room, spawning character...");
-        Debug.Log($"[LobbySpawner] Spawn point array length: {spawnPoints.Length}");
-        
-        if (spawnPoints.Length == 0)
-        {
-            Debug.LogError("[LobbySpawner] ❌ Spawn points array is EMPTY! Set size to 4 in Inspector.");
-            return;
-        }
-        
-        for (int i = 0; i < spawnPoints.Length; i++)
-        {
-            if (spawnPoints[i] == null)
-                Debug.LogWarning($"[LobbySpawner] ⚠️ Spawn point [{i}] is NOT assigned!");
-            else
-                Debug.Log($"[LobbySpawner] ✓ Spawn point [{i}] = {spawnPoints[i].gameObject.name}");
-        }
-
-        // Spawn character của player này
-        SpawnMyCharacter();
+        if (startButtonObj != null) startButtonObj.SetActive(false);
+        StartCoroutine(RegisterWhenReady());
     }
 
-    /// <summary>Spawn character của player hiện tại</summary>
-    private void SpawnMyCharacter()
+    private System.Collections.IEnumerator RegisterWhenReady()
     {
-        Vector3 spawnPos = GetMySpawnPoint();
+        while (FusionNetworkManager.Instance?.Runner == null)
+            yield return null;
 
-        Debug.Log($"[LobbySpawner] Attempting to spawn prefab: {lobbyPlayerPrefabName}");
-        
-        GameObject playerObj = PhotonNetwork.Instantiate(
-            lobbyPlayerPrefabName,
-            spawnPos,
-            Quaternion.identity
-        );
-        
-        if (playerObj != null)
-            Debug.Log($"[LobbySpawner] ✓ Spawned player at {spawnPos}");
-        else
-            Debug.LogError($"[LobbySpawner] ❌ Failed to spawn! Prefab not found: {lobbyPlayerPrefabName}");
+        _runner = FusionNetworkManager.Instance.Runner;
+        _runner.AddCallbacks(this);
+        Debug.Log("[LobbySpawner] Đã đăng ký với Runner");
+
+        // Chỉ Host mới thấy nút Start
+        if (_runner.IsServer && startButtonObj != null)
+            startButtonObj.SetActive(true);
     }
 
-    /// <summary>Lấy spawn point dựa vào actor number</summary>
-    private Vector3 GetMySpawnPoint()
+    private void OnDestroy()
     {
-        int actorNumber = PhotonNetwork.LocalPlayer.ActorNumber;
-        int index = (actorNumber - 1) % spawnPoints.Length;
-        
-        if (spawnPoints[index] != null)
-            return spawnPoints[index].position;
-        
-        Debug.LogWarning($"[LobbySpawner] Spawn point {index} not found!");
-        return Vector3.zero;
+        _runner?.RemoveCallbacks(this);
+    }
+
+    public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
+    {
+        if (!runner.IsServer) return;
+        Vector3 pos = GetSpawnPoint(player);
+        runner.Spawn(lobbyPlayerPrefab, pos, Quaternion.identity, inputAuthority: player);
+        Debug.Log($"[LobbySpawner] Spawn {player} tại {pos}");
+    }
+
+    public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
+        => Debug.Log($"[LobbySpawner] Player left: {player}");
+
+    // Gọi khi Host bấm nút Start
+    public void OnStartGameClicked()
+    {
+        if (_runner == null || !_runner.IsServer) return;
+        Debug.Log("[LobbySpawner] Host bắt đầu game!");
+        _runner.LoadScene(SceneRef.FromIndex(2));
+    }
+
+    private Vector3 GetSpawnPoint(PlayerRef player)
+    {
+        if (spawnPoints.Length == 0) return Vector3.zero;
+        int index = (player.PlayerId - 1) % spawnPoints.Length;
+        return spawnPoints[index] != null ? spawnPoints[index].position : Vector3.zero;
     }
 }
