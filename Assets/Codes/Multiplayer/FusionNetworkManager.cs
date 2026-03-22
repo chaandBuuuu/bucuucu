@@ -14,9 +14,6 @@ public class FusionNetworkManager : FusionCallbacksBase
     [SerializeField] private int           maxPlayers  = 4;
     [SerializeField] private bool          autoConnect = true;
 
-    [Header("Region - dùng 'asia' cho Việt Nam")]
-    [SerializeField] private string region = "asia"; // ← THÊM: cố định region
-
     [Header("Scene Index")]
     [SerializeField] private int lobbySceneIndex = 1;
 
@@ -63,15 +60,15 @@ public class FusionNetworkManager : FusionCallbacksBase
 
         var args = new StartGameArgs
         {
-            GameMode    = mode,
-            SessionName = sessionName,
-            PlayerCount = maxPlayers,
-            Region      = region, // ← FIX CHÍNH: cả Host lẫn Client phải cùng region
+            GameMode     = mode,
+            SessionName  = sessionName,
+            PlayerCount  = maxPlayers,
+            // Region được cài trong PhotonAppSettings asset (xem hướng dẫn bên dưới)
             SceneManager = Runner.GetComponent<NetworkSceneManagerDefault>()
                         ?? Runner.gameObject.AddComponent<NetworkSceneManagerDefault>()
         };
 
-        Debug.Log($"[FusionNetworkManager] Bắt đầu {mode}: {sessionName} | Region: {region}");
+        Debug.Log($"[FusionNetworkManager] Bắt đầu {mode}: {sessionName}");
 
         var result = await Runner.StartGame(args);
 
@@ -157,4 +154,4 @@ public class FusionNetworkManager : FusionCallbacksBase
     public bool       IsHost          => Runner != null && Runner.IsServer;
     public int        MaxPlayers      => maxPlayers;
     public PlayerData LocalPlayerData => playerData;
-}   
+}
