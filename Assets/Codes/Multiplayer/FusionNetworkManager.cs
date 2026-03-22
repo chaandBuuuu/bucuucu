@@ -14,6 +14,9 @@ public class FusionNetworkManager : FusionCallbacksBase
     [SerializeField] private int           maxPlayers  = 4;
     [SerializeField] private bool          autoConnect = true;
 
+    [Header("Region - dùng 'asia' cho Việt Nam")]
+    [SerializeField] private string region = "asia"; // ← THÊM: cố định region
+
     [Header("Scene Index")]
     [SerializeField] private int lobbySceneIndex = 1;
 
@@ -60,14 +63,15 @@ public class FusionNetworkManager : FusionCallbacksBase
 
         var args = new StartGameArgs
         {
-            GameMode     = mode,
-            SessionName  = sessionName,
-            PlayerCount  = maxPlayers,
+            GameMode    = mode,
+            SessionName = sessionName,
+            PlayerCount = maxPlayers,
+            Region      = region, // ← FIX CHÍNH: cả Host lẫn Client phải cùng region
             SceneManager = Runner.GetComponent<NetworkSceneManagerDefault>()
                         ?? Runner.gameObject.AddComponent<NetworkSceneManagerDefault>()
         };
 
-        Debug.Log($"[FusionNetworkManager] Bắt đầu {mode}: {sessionName}");
+        Debug.Log($"[FusionNetworkManager] Bắt đầu {mode}: {sessionName} | Region: {region}");
 
         var result = await Runner.StartGame(args);
 
@@ -81,7 +85,6 @@ public class FusionNetworkManager : FusionCallbacksBase
             Debug.Log("[FusionNetworkManager] Thành công! Đang load Lobby...");
             OnJoinedSessionEvent?.Invoke();
 
-            // Host load scene, client sẽ tự follow
             if (Runner.IsServer)
             {
                 Debug.Log($"[FusionNetworkManager] Host load scene index: {lobbySceneIndex}");
@@ -154,4 +157,4 @@ public class FusionNetworkManager : FusionCallbacksBase
     public bool       IsHost          => Runner != null && Runner.IsServer;
     public int        MaxPlayers      => maxPlayers;
     public PlayerData LocalPlayerData => playerData;
-}
+}   
