@@ -22,10 +22,39 @@ public class PlayerSpawner : FusionCallbacksBase
 
     private NetworkRunner _runner;
 
-    private void Start()
+    private void Awake()
     {
         if (mainCamera == null) mainCamera = Camera.main;
-        StartCoroutine(RegisterWhenReady());
+    }
+
+    private void Start()
+    {
+        // Đăng ký ngay trong Start, không dùng coroutine nữa
+        if (FusionNetworkManager.Instance?.Runner != null)
+        {
+            RegisterWithRunner(FusionNetworkManager.Instance.Runner);
+        }
+        else
+        {
+            // Fallback: dùng coroutine nếu Runner chưa sẵn sàng
+            StartCoroutine(RegisterWhenReady());
+        }
+    }
+
+    private void RegisterWithRunner(NetworkRunner runner)
+    {
+        _runner = runner;
+        _runner.AddCallbacks(this);
+        Debug.Log("[PlayerSpawner] Đã đăng ký với Runner");
+
+        // Spawn ngay cho tất cả player hiện có
+        if (_runner.IsServer)
+        {
+            foreach (PlayerRef player in _runner.ActivePlayers)
+            {
+                SpawnPlayer(_runner, player);
+            }
+        }
     }
 
     private System.Collections.IEnumerator RegisterWhenReady()
@@ -33,9 +62,7 @@ public class PlayerSpawner : FusionCallbacksBase
         while (FusionNetworkManager.Instance?.Runner == null)
             yield return null;
 
-        _runner = FusionNetworkManager.Instance.Runner;
-        _runner.AddCallbacks(this);
-        Debug.Log("[PlayerSpawner] Đã đăng ký với Runner");
+        RegisterWithRunner(FusionNetworkManager.Instance.Runner);
     }
 
     private void OnDestroy()
@@ -43,20 +70,43 @@ public class PlayerSpawner : FusionCallbacksBase
         _runner?.RemoveCallbacks(this);
     }
 
+    // ✅ Callback khi scene load xong — spawn tất cả player
+    public override void OnSceneLoadDone(NetworkRunner runner)
+    {
+        Debug.Log("[PlayerSpawner] Scene load xong, bắt đầu spawn...");
+        if (!runner.IsServer) return;
+
+        foreach (PlayerRef player in runner.ActivePlayers)
+        {
+            SpawnPlayer(runner, player);
+        }
+    }
+
     public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
         if (!runner.IsServer) return;
-
-        Vector3       pos = GetSpawnPoint(player);
-        NetworkObject obj = runner.Spawn(playerPrefab, pos, Quaternion.identity, inputAuthority: player);
-        runner.SetPlayerObject(player, obj);
-        Debug.Log($"[PlayerSpawner] Spawn {player} tại {pos}");
+        SpawnPlayer(runner, player);
     }
 
     public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
     {
         if (runner.IsServer && runner.TryGetPlayerObject(player, out NetworkObject obj))
             runner.Despawn(obj);
+    }
+
+    private void SpawnPlayer(NetworkRunner runner, PlayerRef player)
+    {
+        // Tránh spawn 2 lần
+        if (runner.TryGetPlayerObject(player, out _))
+        {
+            Debug.Log($"[PlayerSpawner] {player} đã có object, bỏ qua.");
+            return;
+        }
+
+        Vector3       pos = GetSpawnPoint(player);
+        NetworkObject obj = runner.Spawn(playerPrefab, pos, Quaternion.identity, inputAuthority: player);
+        runner.SetPlayerObject(player, obj);
+        Debug.Log($"[PlayerSpawner] Spawn {player} tại {pos}");
     }
 
     public void AttachCameraToLocalPlayer(Transform target)
