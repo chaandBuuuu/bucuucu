@@ -30,9 +30,22 @@ public class LobbySpawner : FusionCallbacksBase
         _runner.AddCallbacks(this);
         Debug.Log("[LobbySpawner] Đã đăng ký với Runner");
 
-        // Chỉ Host mới thấy nút Start
         if (_runner.IsServer && startButtonObj != null)
             startButtonObj.SetActive(true);
+
+        // ← FIX: Spawn những player đã join trước khi scene load xong
+        if (_runner.IsServer)
+        {
+            foreach (PlayerRef player in _runner.ActivePlayers)
+            {
+                if (!_runner.TryGetPlayerObject(player, out _))
+                {
+                    Vector3 pos = GetSpawnPoint(player);
+                    _runner.Spawn(lobbyPlayerPrefab, pos, Quaternion.identity, inputAuthority: player);
+                    Debug.Log($"[LobbySpawner] Late-spawn {player} tại {pos}");
+                }
+            }
+        }
     }
 
     private void OnDestroy()
@@ -51,7 +64,6 @@ public class LobbySpawner : FusionCallbacksBase
     public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
         => Debug.Log($"[LobbySpawner] Player left: {player}");
 
-    // Gọi khi Host bấm nút Start
     public void OnStartGameClicked()
     {
         if (_runner == null || !_runner.IsServer) return;

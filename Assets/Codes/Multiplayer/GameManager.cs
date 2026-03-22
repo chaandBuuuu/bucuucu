@@ -16,6 +16,7 @@ public class GameManager : NetworkBehaviour
 
     private ChangeDetector _changes;
     private float _lastSync = 0f;
+    private bool _isSpawned = false; // ✅ FIX: cờ kiểm tra đã Spawned chưa
 
     private void Awake()
     {
@@ -25,6 +26,7 @@ public class GameManager : NetworkBehaviour
 
     public override void Spawned()
     {
+        _isSpawned = true; // ✅ đánh dấu đã sẵn sàng
         _changes = GetChangeDetector(ChangeDetector.Source.SimulationState);
 
         if (HasStateAuthority)
@@ -39,6 +41,7 @@ public class GameManager : NetworkBehaviour
 
     public override void Render()
     {
+        if (!_isSpawned) return;
         foreach (var change in _changes.DetectChanges(this))
         {
             switch (change)
@@ -68,7 +71,11 @@ public class GameManager : NetworkBehaviour
             IsPaused = !IsPaused;
     }
 
-    private void Update() => UpdateUI();
+    private void Update()
+    {
+        if (!_isSpawned) return; // ✅ FIX: không gọi UpdateUI trước khi Spawned
+        UpdateUI();
+    }
 
     public void OnPlayerEliminated(string playerName)
     {
@@ -101,6 +108,8 @@ public class GameManager : NetworkBehaviour
 
     private void UpdateUI()
     {
+        if (!_isSpawned) return;
+
         if (playerCountText != null && Runner != null)
             playerCountText.text = $"Players: {AlivePlayers}";
 

@@ -17,6 +17,9 @@ public class LobbyCharacterSelectUI : MonoBehaviour
     [Header("Status")]
     [SerializeField] private TMP_Text statusText;
 
+    [Header("Canvas")]
+    [SerializeField] private GameObject canvasToHide; // ← THÊM: kéo Canvas chọn nhân vật vào đây
+
     private readonly string[] _charNames  = { "Hacker", "Ghost Hunter", "Priest", "Scientist" };
     private readonly Color[]  _charColors =
     {
@@ -57,6 +60,12 @@ public class LobbyCharacterSelectUI : MonoBehaviour
 
         UpdateStatus($"Đã chọn: {_charNames[index]}");
         Debug.Log($"[LobbyCharacterSelectUI] Chọn: {_charNames[index]}");
+
+        // ← FIX: Tắt canvas sau khi chọn nhân vật
+        if (canvasToHide != null)
+            canvasToHide.SetActive(false);
+        else
+            Debug.LogWarning("[LobbyCharacterSelectUI] canvasToHide chưa được gán trong Inspector!");
     }
 
     private void UpdateStatus(string msg)
