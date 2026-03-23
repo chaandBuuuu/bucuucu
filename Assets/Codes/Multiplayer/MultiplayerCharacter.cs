@@ -19,8 +19,7 @@ public class MultiplayerCharacter : NetworkBehaviour
     [Networked] public  int     CharacterIndex    { get; private set; }
     [Networked] public  string  NetworkedName     { get; private set; }
     [Networked] private Vector2 NetworkedVelocity { get; set; }
-    [Networked] private Vector3 NetworkedPos      { get; set; }
-    [Networked] private float   NetworkedRot      { get; set; }
+    // FIX: Xóa NetworkedPos và NetworkedRot — NetworkTransform component đã tự sync
 
     private ChangeDetector _changes;
     private Rigidbody2D    rb;
@@ -48,7 +47,7 @@ public class MultiplayerCharacter : NetworkBehaviour
 
         if (!HasInputAuthority)
         {
-            // Remote player: tắt physics, NetworkTransform điều khiển
+            // FIX: Remote player dùng Kinematic để NetworkTransform điều khiển transform trực tiếp
             rb.bodyType  = RigidbodyType2D.Kinematic;
             rb.simulated = false;
         }
@@ -61,16 +60,9 @@ public class MultiplayerCharacter : NetworkBehaviour
     {
         if (!_localSetupDone) TrySetupLocalPlayer();
 
-        // ✅ Remote player: đọc NetworkedPos để cập nhật vị trí
-        if (!HasInputAuthority && Object != null)
-        {
-            transform.position = Vector3.Lerp(
-                transform.position,
-                NetworkedPos,
-                10f * Time.deltaTime
-            );
-            transform.rotation = Quaternion.Euler(0, 0, NetworkedRot);
-        }
+        // FIX: Xóa block Lerp thủ công cho remote player.
+        // NetworkTransform đã tự sync và interpolate position/rotation.
+        // Nếu tự Lerp thêm sẽ xung đột và làm remote player không move.
 
         foreach (var change in _changes.DetectChanges(this))
             if (change == nameof(CharacterIndex) || change == nameof(NetworkedName))
@@ -113,7 +105,10 @@ public class MultiplayerCharacter : NetworkBehaviour
 
     public override void FixedUpdateNetwork()
     {
-        if (!HasStateAuthority) return;
+        // FIX: Dùng HasInputAuthority thay vì HasStateAuthority.
+        // HasStateAuthority = Host chạy cho TẤT CẢ player → client không move được.
+        // HasInputAuthority = chỉ owner của object mới chạy physics của chính mình.
+        if (!HasInputAuthority) return;
         if (!GetInput(out NetworkInputData input)) return;
 
         Vector2 target  = input.Direction.normalized * moveSpeed;
@@ -121,17 +116,14 @@ public class MultiplayerCharacter : NetworkBehaviour
         currentVelocity = Vector2.MoveTowards(currentVelocity, target, blend * Runner.DeltaTime);
 
         rb.linearVelocity = currentVelocity;
-        NetworkedVelocity = currentVelocity;
-
-        // ✅ Sync position và rotation thủ công cho Client đọc
-        NetworkedPos = transform.position;
+        NetworkedVelocity = currentVelocity; // Giữ để Update() dùng cho animation remote
 
         if (faceDir && input.Direction.sqrMagnitude > 0.01f)
         {
             float angle = Mathf.Atan2(input.Direction.y, input.Direction.x) * Mathf.Rad2Deg;
             transform.rotation = Quaternion.AngleAxis(angle - 90f, Vector3.forward);
-            NetworkedRot = transform.eulerAngles.z;
         }
+        // FIX: Xóa NetworkedPos/NetworkedRot — NetworkTransform tự sync position và rotation
     }
 
     private void Update()

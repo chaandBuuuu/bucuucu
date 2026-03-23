@@ -82,18 +82,14 @@ public class PlayerSpawner : FusionCallbacksBase
 
         Vector3 pos = GetSpawnPoint(player);
 
-        // ✅ Dùng onBeforeSpawned để set position chính xác trước khi object active
+        // FIX: Bỏ onBeforeSpawned — nó set transform.position nhưng Fusion sẽ
+        // override lại bằng tham số pos trong Spawn() gây xung đột vị trí.
+        // Chỉ cần truyền pos vào Spawn() là đủ và chính xác.
         NetworkObject obj = runner.Spawn(
             playerPrefab,
             pos,
             Quaternion.identity,
-            inputAuthority: player,
-            onBeforeSpawned: (r, networkObj) =>
-            {
-                // Set position ngay trước khi spawn
-                networkObj.transform.position = pos;
-                Debug.Log($"[PlayerSpawner] onBeforeSpawned {player} tại {pos}");
-            }
+            inputAuthority: player
         );
 
         runner.SetPlayerObject(player, obj);
@@ -106,4 +102,4 @@ public class PlayerSpawner : FusionCallbacksBase
         int index = (player.PlayerId - 1) % spawnPoints.Length;
         return spawnPoints[index];
     }
-}
+}   
