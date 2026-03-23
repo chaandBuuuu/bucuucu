@@ -1,11 +1,7 @@
 using UnityEngine;
 using Fusion;
 
-/// <summary>
-/// Yêu cầu prefab có thêm component NetworkTransform để sync position tự động
-/// </summary>
 [RequireComponent(typeof(Rigidbody2D))]
-[RequireComponent(typeof(NetworkTransform))] // ✅ bắt buộc có NetworkTransform
 public class MultiplayerCharacter : NetworkBehaviour
 {
     [Header("Di Chuyển")]
@@ -40,10 +36,6 @@ public class MultiplayerCharacter : NetworkBehaviour
         if (animator       == null) animator       = GetComponent<Animator>();
         rb.gravityScale   = 0f;
         rb.freezeRotation = true;
-
-        // ✅ Remote player không cần physics local
-        if (!HasInputAuthority)
-            rb.bodyType = RigidbodyType2D.Kinematic;
     }
 
     public override void Spawned()
@@ -51,9 +43,12 @@ public class MultiplayerCharacter : NetworkBehaviour
         _changes = GetChangeDetector(ChangeDetector.Source.SimulationState);
         Debug.Log($"[MultiplayerCharacter] Spawned | HasInputAuthority={HasInputAuthority} | HasStateAuthority={HasStateAuthority}");
 
-        // Remote player: tắt physics
+        // Remote player: tắt physics local
         if (!HasInputAuthority)
-            rb.bodyType = RigidbodyType2D.Kinematic;
+        {
+            rb.bodyType  = RigidbodyType2D.Kinematic;
+            rb.simulated = false;
+        }
 
         TrySetupLocalPlayer();
         ApplyVisuals();
@@ -61,15 +56,12 @@ public class MultiplayerCharacter : NetworkBehaviour
 
     public override void Render()
     {
-        // Thử setup mỗi frame cho đến khi thành công
         if (!_localSetupDone)
             TrySetupLocalPlayer();
 
         foreach (var change in _changes.DetectChanges(this))
-        {
             if (change == nameof(CharacterIndex) || change == nameof(NetworkedName))
                 ApplyVisuals();
-        }
     }
 
     private void TrySetupLocalPlayer()
@@ -77,8 +69,8 @@ public class MultiplayerCharacter : NetworkBehaviour
         if (!HasInputAuthority || _localSetupDone) return;
         _localSetupDone = true;
 
-        // Bật lại physics cho local player
-        rb.bodyType = RigidbodyType2D.Dynamic;
+        rb.bodyType  = RigidbodyType2D.Dynamic;
+        rb.simulated = true;
 
         CharacterIndex = playerData != null ? playerData.characterIndex : 0;
         NetworkedName  = playerData != null && !string.IsNullOrEmpty(playerData.playerName)
@@ -87,16 +79,14 @@ public class MultiplayerCharacter : NetworkBehaviour
 
         gameObject.name = $"{GetCharName(CharacterIndex)}_P{Runner.LocalPlayer.PlayerId}";
         AttachCamera();
-
-        Debug.Log($"[MultiplayerCharacter] ✅ Local setup: {NetworkedName} | {GetCharName(CharacterIndex)}");
+        Debug.Log($"[MultiplayerCharacter] ✅ Local: {NetworkedName} | {GetCharName(CharacterIndex)}");
     }
 
     private void AttachCamera()
     {
         Camera cam = Camera.main;
         if (cam == null) return;
-        CameraFollow follow = cam.GetComponent<CameraFollow>()
-                           ?? cam.gameObject.AddComponent<CameraFollow>();
+        var follow = cam.GetComponent<CameraFollow>() ?? cam.gameObject.AddComponent<CameraFollow>();
         follow.SetTarget(transform);
         Debug.Log($"[MultiplayerCharacter] Camera → {gameObject.name}");
     }
@@ -111,10 +101,10 @@ public class MultiplayerCharacter : NetworkBehaviour
     {
         if (!GetInput(out NetworkInputData input)) return;
 
-        Vector2 target = input.Direction.normalized * moveSpeed;
-        float   blend  = input.Direction.sqrMagnitude > 0.01f ? acceleration : deceleration;
+        Vector2 target  = input.Direction.normalized * moveSpeed;
+        float   blend   = input.Direction.sqrMagnitude > 0.01f ? acceleration : deceleration;
+        currentVelocity = Vector2.MoveTowards(currentVelocity, target, blend * Runner.DeltaTime);
 
-        currentVelocity   = Vector2.MoveTowards(currentVelocity, target, blend * Runner.DeltaTime);
         rb.linearVelocity = currentVelocity;
         NetworkedVelocity = currentVelocity;
 
