@@ -2,6 +2,10 @@ using UnityEngine;
 using Fusion;
 using Fusion.Sockets;
 
+/// <summary>
+/// Spawn nhân vật trong game scene
+/// Gắn vào GameObject trong scene Game
+/// </summary>
 public class PlayerSpawner : FusionCallbacksBase
 {
     [Header("Spawn Settings")]
@@ -14,42 +18,37 @@ public class PlayerSpawner : FusionCallbacksBase
         new Vector3( 5, 5, 0)
     };
 
-    [Header("Camera")]
-    [SerializeField] private Camera mainCamera;
-
     private NetworkRunner _runner;
+    private bool          _isRegistered = false;
 
     private void Awake()
     {
-        if (mainCamera == null) mainCamera = Camera.main;
+        Debug.Log("[PlayerSpawner] Awake");
     }
 
-    private void Start()
+    private void Update()
     {
-        if (FusionNetworkManager.Instance?.Runner != null)
-            StartCoroutine(RegisterWithRunner(FusionNetworkManager.Instance.Runner));
-        else
-            StartCoroutine(WaitAndRegister());
+        // ✅ Thử đăng ký mỗi frame cho đến khi thành công
+        // Giống cách InputHandler làm — đảm bảo không bị miss
+        if (!_isRegistered)
+            TryRegister();
     }
 
-    private System.Collections.IEnumerator WaitAndRegister()
+    private void TryRegister()
     {
-        while (FusionNetworkManager.Instance?.Runner == null)
-            yield return null;
-        yield return RegisterWithRunner(FusionNetworkManager.Instance.Runner);
-    }
+        var runner = FusionNetworkManager.Instance?.Runner;
+        if (runner == null || !runner.IsRunning) return;
 
-    private System.Collections.IEnumerator RegisterWithRunner(NetworkRunner runner)
-    {
         _runner = runner;
         _runner.AddCallbacks(this);
-        Debug.Log("[PlayerSpawner] Đã đăng ký với Runner");
+        _isRegistered = true;
+        Debug.Log($"[PlayerSpawner] Đã đăng ký | IsServer={runner.IsServer}");
 
-        // Late-spawn cho các player đã join
+        // Spawn ngay cho các player đã có mặt
         if (_runner.IsServer)
         {
             foreach (PlayerRef player in _runner.ActivePlayers)
-                yield return SpawnAsync(_runner, player);
+                SpawnPlayer(_runner, player);
         }
     }
 
@@ -60,54 +59,45 @@ public class PlayerSpawner : FusionCallbacksBase
 
     public override void OnSceneLoadDone(NetworkRunner runner)
     {
-        Debug.Log("[PlayerSpawner] Scene load xong, spawn players...");
+        Debug.Log("[PlayerSpawner] OnSceneLoadDone");
         if (!runner.IsServer) return;
-        StartCoroutine(SpawnAllAsync(runner));
-    }
 
-    private System.Collections.IEnumerator SpawnAllAsync(NetworkRunner runner)
-    {
         foreach (PlayerRef player in runner.ActivePlayers)
-            yield return SpawnAsync(runner, player);
+            SpawnPlayer(runner, player);
     }
 
     public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
+        Debug.Log($"[PlayerSpawner] OnPlayerJoined: {player}");
         if (!runner.IsServer) return;
-        StartCoroutine(SpawnAsync(runner, player));
+        SpawnPlayer(runner, player);
     }
 
     public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
     {
-        if (runner.IsServer && runner.TryGetPlayerObject(player, out NetworkObject obj))
+        if (!runner.IsServer) return;
+        if (runner.TryGetPlayerObject(player, out NetworkObject obj))
             runner.Despawn(obj);
     }
 
-    // ✅ Async spawn — tránh lỗi "Failed to load prefab synchronously"
-    private System.Collections.IEnumerator SpawnAsync(NetworkRunner runner, PlayerRef player)
+    private void SpawnPlayer(NetworkRunner runner, PlayerRef player)
     {
-        yield return null; // chờ 1 frame
-
-        if (runner == null || !runner.IsServer) yield break;
+        // Tránh spawn 2 lần
         if (runner.TryGetPlayerObject(player, out _))
         {
             Debug.Log($"[PlayerSpawner] {player} đã có object, bỏ qua.");
-            yield break;
+            return;
         }
 
         Vector3       pos = GetSpawnPoint(player);
-        NetworkObject obj = runner.Spawn(playerPrefab, pos, Quaternion.identity, inputAuthority: player);
+        NetworkObject obj = runner.Spawn(
+            playerPrefab,
+            pos,
+            Quaternion.identity,
+            inputAuthority: player  // ✅ gán inputAuthority đúng player
+        );
         runner.SetPlayerObject(player, obj);
-        Debug.Log($"[PlayerSpawner] Spawn {player} tại {pos}");
-    }
-
-    public void AttachCameraToLocalPlayer(Transform target)
-    {
-        if (mainCamera == null) mainCamera = Camera.main;
-        if (mainCamera == null) return;
-        var follow = mainCamera.GetComponent<CameraFollow>()
-                  ?? mainCamera.gameObject.AddComponent<CameraFollow>();
-        follow.SetTarget(target);
+        Debug.Log($"[PlayerSpawner] Spawned {player} tại {pos}");
     }
 
     private Vector3 GetSpawnPoint(PlayerRef player)
