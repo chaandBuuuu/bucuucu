@@ -2,9 +2,6 @@ using UnityEngine;
 using Fusion;
 using Fusion.Sockets;
 
-/// <summary>
-/// Spawn nhân vật trong game scene
-/// </summary>
 public class PlayerSpawner : FusionCallbacksBase
 {
     [Header("Spawn Settings")]
@@ -29,40 +26,31 @@ public class PlayerSpawner : FusionCallbacksBase
 
     private void Start()
     {
-        // Đăng ký ngay trong Start, không dùng coroutine nữa
         if (FusionNetworkManager.Instance?.Runner != null)
-        {
-            RegisterWithRunner(FusionNetworkManager.Instance.Runner);
-        }
+            StartCoroutine(RegisterWithRunner(FusionNetworkManager.Instance.Runner));
         else
-        {
-            // Fallback: dùng coroutine nếu Runner chưa sẵn sàng
-            StartCoroutine(RegisterWhenReady());
-        }
+            StartCoroutine(WaitAndRegister());
     }
 
-    private void RegisterWithRunner(NetworkRunner runner)
+    private System.Collections.IEnumerator WaitAndRegister()
+    {
+        while (FusionNetworkManager.Instance?.Runner == null)
+            yield return null;
+        yield return RegisterWithRunner(FusionNetworkManager.Instance.Runner);
+    }
+
+    private System.Collections.IEnumerator RegisterWithRunner(NetworkRunner runner)
     {
         _runner = runner;
         _runner.AddCallbacks(this);
         Debug.Log("[PlayerSpawner] Đã đăng ký với Runner");
 
-        // Spawn ngay cho tất cả player hiện có
+        // Late-spawn cho các player đã join
         if (_runner.IsServer)
         {
             foreach (PlayerRef player in _runner.ActivePlayers)
-            {
-                SpawnPlayer(_runner, player);
-            }
+                yield return SpawnAsync(_runner, player);
         }
-    }
-
-    private System.Collections.IEnumerator RegisterWhenReady()
-    {
-        while (FusionNetworkManager.Instance?.Runner == null)
-            yield return null;
-
-        RegisterWithRunner(FusionNetworkManager.Instance.Runner);
     }
 
     private void OnDestroy()
@@ -70,22 +58,23 @@ public class PlayerSpawner : FusionCallbacksBase
         _runner?.RemoveCallbacks(this);
     }
 
-    // ✅ Callback khi scene load xong — spawn tất cả player
     public override void OnSceneLoadDone(NetworkRunner runner)
     {
-        Debug.Log("[PlayerSpawner] Scene load xong, bắt đầu spawn...");
+        Debug.Log("[PlayerSpawner] Scene load xong, spawn players...");
         if (!runner.IsServer) return;
+        StartCoroutine(SpawnAllAsync(runner));
+    }
 
+    private System.Collections.IEnumerator SpawnAllAsync(NetworkRunner runner)
+    {
         foreach (PlayerRef player in runner.ActivePlayers)
-        {
-            SpawnPlayer(runner, player);
-        }
+            yield return SpawnAsync(runner, player);
     }
 
     public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
         if (!runner.IsServer) return;
-        SpawnPlayer(runner, player);
+        StartCoroutine(SpawnAsync(runner, player));
     }
 
     public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
@@ -94,13 +83,16 @@ public class PlayerSpawner : FusionCallbacksBase
             runner.Despawn(obj);
     }
 
-    private void SpawnPlayer(NetworkRunner runner, PlayerRef player)
+    // ✅ Async spawn — tránh lỗi "Failed to load prefab synchronously"
+    private System.Collections.IEnumerator SpawnAsync(NetworkRunner runner, PlayerRef player)
     {
-        // Tránh spawn 2 lần
+        yield return null; // chờ 1 frame
+
+        if (runner == null || !runner.IsServer) yield break;
         if (runner.TryGetPlayerObject(player, out _))
         {
             Debug.Log($"[PlayerSpawner] {player} đã có object, bỏ qua.");
-            return;
+            yield break;
         }
 
         Vector3       pos = GetSpawnPoint(player);
@@ -113,11 +105,9 @@ public class PlayerSpawner : FusionCallbacksBase
     {
         if (mainCamera == null) mainCamera = Camera.main;
         if (mainCamera == null) return;
-
         var follow = mainCamera.GetComponent<CameraFollow>()
                   ?? mainCamera.gameObject.AddComponent<CameraFollow>();
         follow.SetTarget(target);
-        Debug.Log("[PlayerSpawner] Camera gắn xong");
     }
 
     private Vector3 GetSpawnPoint(PlayerRef player)

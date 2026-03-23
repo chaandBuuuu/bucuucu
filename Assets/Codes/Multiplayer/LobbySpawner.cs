@@ -1,8 +1,6 @@
 using UnityEngine;
 using Fusion;
 using Fusion.Sockets;
-using UnityEngine.UI;
-using TMPro;
 
 public class LobbySpawner : FusionCallbacksBase
 {
@@ -33,17 +31,13 @@ public class LobbySpawner : FusionCallbacksBase
         if (_runner.IsServer && startButtonObj != null)
             startButtonObj.SetActive(true);
 
-        // ← FIX: Spawn những player đã join trước khi scene load xong
+        // Late-spawn cho các player đã join
         if (_runner.IsServer)
         {
             foreach (PlayerRef player in _runner.ActivePlayers)
             {
                 if (!_runner.TryGetPlayerObject(player, out _))
-                {
-                    Vector3 pos = GetSpawnPoint(player);
-                    _runner.Spawn(lobbyPlayerPrefab, pos, Quaternion.identity, inputAuthority: player);
-                    Debug.Log($"[LobbySpawner] Late-spawn {player} tại {pos}");
-                }
+                    yield return SpawnAsync(_runner, player);
             }
         }
     }
@@ -56,9 +50,8 @@ public class LobbySpawner : FusionCallbacksBase
     public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
         if (!runner.IsServer) return;
-        Vector3 pos = GetSpawnPoint(player);
-        runner.Spawn(lobbyPlayerPrefab, pos, Quaternion.identity, inputAuthority: player);
-        Debug.Log($"[LobbySpawner] Spawn {player} tại {pos}");
+        if (runner.TryGetPlayerObject(player, out _)) return;
+        StartCoroutine(SpawnAsync(runner, player));
     }
 
     public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
@@ -69,6 +62,20 @@ public class LobbySpawner : FusionCallbacksBase
         if (_runner == null || !_runner.IsServer) return;
         Debug.Log("[LobbySpawner] Host bắt đầu game!");
         _runner.LoadScene(SceneRef.FromIndex(2));
+    }
+
+    // ✅ Dùng async spawn để tránh lỗi "Failed to load prefab synchronously"
+    private System.Collections.IEnumerator SpawnAsync(NetworkRunner runner, PlayerRef player)
+    {
+        // Chờ 1 frame để Fusion sẵn sàng
+        yield return null;
+
+        if (runner == null || !runner.IsServer) yield break;
+        if (runner.TryGetPlayerObject(player, out _)) yield break;
+
+        Vector3 pos = GetSpawnPoint(player);
+        runner.Spawn(lobbyPlayerPrefab, pos, Quaternion.identity, inputAuthority: player);
+        Debug.Log($"[LobbySpawner] Spawn {player} tại {pos}");
     }
 
     private Vector3 GetSpawnPoint(PlayerRef player)
