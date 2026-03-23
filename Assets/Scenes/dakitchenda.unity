@@ -11197,13 +11197,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 6de8835cd11c6c4418d6dcaf6aa92b91, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InventoryUI
-  slotRoots:
-  - {fileID: 2042386026}
-  - {fileID: 1521922238}
-  - {fileID: 720799998}
-  - {fileID: 1692206920}
-  - {fileID: 1292506436}
-  - {fileID: 62785672}
   itemIcons:
   - {fileID: 431687975}
   - {fileID: 141173534}
@@ -11225,7 +11218,6 @@ MonoBehaviour:
   - {fileID: 1745087889}
   - {fileID: 189127986}
   - {fileID: 751077112}
-  emptyIconColor: {r: 1, g: 1, b: 1, a: 0}
 --- !u!114 &1013886537
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -11648,50 +11640,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1083224296}
   m_CullTransparentMesh: 1
---- !u!1 &1130679182
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 1130679184}
-  - component: {fileID: 1130679183}
-  m_Layer: 0
-  m_Name: InputHandler
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &1130679183
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1130679182}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 326aabb042f99894d92f36e3bc1d2c18, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::InputHandler
---- !u!4 &1130679184
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1130679182}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -0.07568, y: 0.39958, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1144729816
 GameObject:
   m_ObjectHideFlags: 0
@@ -13923,7 +13871,6 @@ MonoBehaviour:
   - {x: -4, y: 0, z: 0}
   - {x: -5, y: 0, z: 0}
   - {x: -6, y: 0, z: 0}
-  mainCamera: {fileID: 1970116985}
 --- !u!4 &1414457992
 Transform:
   m_ObjectHideFlags: 0
@@ -17549,4 +17496,3 @@ SceneRoots:
   - {fileID: 1232612933}
   - {fileID: 2039697133}
   - {fileID: 1414457992}
-  - {fileID: 1130679184}
