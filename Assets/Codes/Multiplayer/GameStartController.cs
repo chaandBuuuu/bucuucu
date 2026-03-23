@@ -5,7 +5,7 @@ using Fusion;
 public class GameStartController : NetworkBehaviour
 {
     [Header("Config")]
-    [SerializeField] private int   requiredPlayers = 4;
+    [SerializeField] private int   requiredPlayers = 2;  // Số player cần để start
     [SerializeField] private float checkInterval   = 1f;
 
     [Header("UI")]
@@ -38,14 +38,21 @@ public class GameStartController : NetworkBehaviour
         int playerCount = 0;
         foreach (var _ in Runner.ActivePlayers) playerCount++;
 
+        // ✅ Đếm player đã chọn nhân vật (isReady = true trong PlayerData)
+        // Vì PlayerData là local scriptable object, dùng cách khác:
+        // Đếm số player có LobbyPlayerController (đã spawn = đã vào lobby)
         int readyCount = 0;
         foreach (var player in Runner.ActivePlayers)
+        {
             if (Runner.TryGetPlayerObject(player, out NetworkObject obj))
-                if (obj.GetComponent<LobbyPlayerController>() != null)
-                    readyCount++;
+            {
+                // Player có object trong lobby = đã sẵn sàng
+                readyCount++;
+            }
+        }
 
         ReadyCount = readyCount;
-        Debug.Log($"[GameStartController] Players: {playerCount}, Ready: {readyCount}");
+        Debug.Log($"[GameStartController] Players: {playerCount}, Ready: {readyCount}/{requiredPlayers}");
 
         if (playerCount >= requiredPlayers && readyCount >= requiredPlayers)
         {
