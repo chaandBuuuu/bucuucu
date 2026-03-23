@@ -1,64 +1,166 @@
 using UnityEngine;
-using TMPro;
 using Fusion;
 
-public class GameStartController : NetworkBehaviour
+[RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent(typeof(NetworkTransform))]
+public class MultiplayerCharacter : NetworkBehaviour
 {
-    [Header("Config")]
-    [SerializeField] private int   requiredPlayers = 2;  // Số player cần để start
-    [SerializeField] private float checkInterval   = 1f;
+    [Header("Di Chuyển")]
+    [SerializeField] private float moveSpeed    = 5f;
+    [SerializeField] private float acceleration = 15f;
+    [SerializeField] private float deceleration = 20f;
+    [SerializeField] private bool  faceDir      = true;
 
-    [Header("UI")]
-    [SerializeField] private TMP_Text statusText;
+    [Header("Visual")]
+    [SerializeField] private SpriteRenderer spriteRenderer;
+    [SerializeField] private Animator       animator;
+    [SerializeField] private PlayerData     playerData;
 
-    [Networked] private int  ReadyCount   { get; set; }
-    [Networked] private bool GameStarting { get; set; }
+    [Networked] public  int     CharacterIndex    { get; private set; }
+    [Networked] public  string  NetworkedName     { get; private set; }
+    [Networked] private Vector2 NetworkedVelocity { get; set; }
+    [Networked] private Vector3 NetworkedPos      { get; set; }
+    [Networked] private float   NetworkedRot      { get; set; }
 
-    private float _lastCheck = 0f;
+    private ChangeDetector _changes;
+    private Rigidbody2D    rb;
+    private Vector2        currentVelocity;
+    private bool           _localSetupDone = false;
+
+    private static readonly int AnimSpeed    = Animator.StringToHash("Speed");
+    private static readonly int AnimMoveX    = Animator.StringToHash("MoveX");
+    private static readonly int AnimMoveY    = Animator.StringToHash("MoveY");
+    private static readonly int AnimIsMoving = Animator.StringToHash("IsMoving");
+
+    private void Awake()
+    {
+        rb = GetComponent<Rigidbody2D>();
+        if (spriteRenderer == null) spriteRenderer = GetComponent<SpriteRenderer>();
+        if (animator       == null) animator       = GetComponent<Animator>();
+        rb.gravityScale   = 0f;
+        rb.freezeRotation = true;
+    }
 
     public override void Spawned()
-        => Debug.Log("[GameStartController] Chờ tất cả player...");
+    {
+        _changes = GetChangeDetector(ChangeDetector.Source.SimulationState);
+        Debug.Log($"[MultiplayerCharacter] Spawned | HasInputAuthority={HasInputAuthority} | HasStateAuthority={HasStateAuthority}");
+
+        if (!HasInputAuthority)
+        {
+            // Remote player: tắt physics, NetworkTransform điều khiển
+            rb.bodyType  = RigidbodyType2D.Kinematic;
+            rb.simulated = false;
+        }
+
+        TrySetupLocalPlayer();
+        ApplyVisuals();
+    }
+
+    public override void Render()
+    {
+        if (!_localSetupDone) TrySetupLocalPlayer();
+
+        // ✅ Remote player: đọc NetworkedPos để cập nhật vị trí
+        if (!HasInputAuthority && Object != null)
+        {
+            transform.position = Vector3.Lerp(
+                transform.position,
+                NetworkedPos,
+                10f * Time.deltaTime
+            );
+            transform.rotation = Quaternion.Euler(0, 0, NetworkedRot);
+        }
+
+        foreach (var change in _changes.DetectChanges(this))
+            if (change == nameof(CharacterIndex) || change == nameof(NetworkedName))
+                ApplyVisuals();
+    }
+
+    private void TrySetupLocalPlayer()
+    {
+        if (!HasInputAuthority || _localSetupDone) return;
+        _localSetupDone = true;
+
+        rb.bodyType  = RigidbodyType2D.Dynamic;
+        rb.simulated = true;
+
+        CharacterIndex = playerData != null ? playerData.characterIndex : 0;
+        NetworkedName  = playerData != null && !string.IsNullOrEmpty(playerData.playerName)
+                         ? playerData.playerName
+                         : $"Player {Runner.LocalPlayer.PlayerId}";
+
+        gameObject.name = $"{GetCharName(CharacterIndex)}_P{Runner.LocalPlayer.PlayerId}";
+        AttachCamera();
+        Debug.Log($"[MultiplayerCharacter] ✅ Local: {NetworkedName} | {GetCharName(CharacterIndex)}");
+    }
+
+    private void AttachCamera()
+    {
+        Camera cam = Camera.main;
+        if (cam == null) return;
+        var follow = cam.GetComponent<CameraFollow>()
+                  ?? cam.gameObject.AddComponent<CameraFollow>();
+        follow.SetTarget(transform);
+        Debug.Log($"[MultiplayerCharacter] Camera → {gameObject.name}");
+    }
+
+    private void ApplyVisuals()
+    {
+        if (spriteRenderer != null)
+            spriteRenderer.color = GetColor(CharacterIndex);
+    }
 
     public override void FixedUpdateNetwork()
     {
-        if (!Runner.IsServer || GameStarting) return;
-        if (Runner.SimulationTime - _lastCheck < checkInterval) return;
-        _lastCheck = Runner.SimulationTime;
-        CheckIfCanStart();
+        if (!HasStateAuthority) return;
+        if (!GetInput(out NetworkInputData input)) return;
+
+        Vector2 target  = input.Direction.normalized * moveSpeed;
+        float   blend   = input.Direction.sqrMagnitude > 0.01f ? acceleration : deceleration;
+        currentVelocity = Vector2.MoveTowards(currentVelocity, target, blend * Runner.DeltaTime);
+
+        rb.linearVelocity = currentVelocity;
+        NetworkedVelocity = currentVelocity;
+
+        // ✅ Sync position và rotation thủ công cho Client đọc
+        NetworkedPos = transform.position;
+
+        if (faceDir && input.Direction.sqrMagnitude > 0.01f)
+        {
+            float angle = Mathf.Atan2(input.Direction.y, input.Direction.x) * Mathf.Rad2Deg;
+            transform.rotation = Quaternion.AngleAxis(angle - 90f, Vector3.forward);
+            NetworkedRot = transform.eulerAngles.z;
+        }
     }
 
     private void Update()
     {
-        if (statusText != null)
-            statusText.text = $"Sẵn sàng: {ReadyCount}/{requiredPlayers}";
+        if (animator == null) return;
+        Vector2 vel   = HasInputAuthority ? currentVelocity : NetworkedVelocity;
+        float   speed = vel.magnitude;
+        animator.SetFloat(AnimSpeed,   speed);
+        animator.SetFloat(AnimMoveX,   vel.x);
+        animator.SetFloat(AnimMoveY,   vel.y);
+        animator.SetBool(AnimIsMoving, speed > 0.1f);
     }
 
-    private void CheckIfCanStart()
+    private string GetCharName(int i) => i switch
     {
-        int playerCount = 0;
-        foreach (var _ in Runner.ActivePlayers) playerCount++;
+        0 => "Hacker", 1 => "Ghost_Hunter", 2 => "Priest", 3 => "Scientist", _ => "Unknown"
+    };
 
-        // ✅ Đếm player đã chọn nhân vật (isReady = true trong PlayerData)
-        // Vì PlayerData là local scriptable object, dùng cách khác:
-        // Đếm số player có LobbyPlayerController (đã spawn = đã vào lobby)
-        int readyCount = 0;
-        foreach (var player in Runner.ActivePlayers)
-        {
-            if (Runner.TryGetPlayerObject(player, out NetworkObject obj))
-            {
-                // Player có object trong lobby = đã sẵn sàng
-                readyCount++;
-            }
-        }
+    private Color GetColor(int i) => i switch
+    {
+        0 => new Color(0.8f, 0.3f, 0.3f),
+        1 => new Color(0.3f, 0.8f, 0.3f),
+        2 => new Color(0.8f, 0.8f, 0.3f),
+        3 => new Color(0.3f, 0.3f, 0.8f),
+        _ => Color.white
+    };
 
-        ReadyCount = readyCount;
-        Debug.Log($"[GameStartController] Players: {playerCount}, Ready: {readyCount}/{requiredPlayers}");
-
-        if (playerCount >= requiredPlayers && readyCount >= requiredPlayers)
-        {
-            GameStarting = true;
-            Debug.Log("[GameStartController] Bắt đầu game!");
-            Runner.LoadScene(SceneRef.FromIndex(2));
-        }
-    }
+    public bool   IsOwner        => HasInputAuthority;
+    public string PlayerNickname => !string.IsNullOrEmpty(NetworkedName)
+                                    ? NetworkedName
+                                    : $"Player {Object.InputAuthority.PlayerId}";
 }

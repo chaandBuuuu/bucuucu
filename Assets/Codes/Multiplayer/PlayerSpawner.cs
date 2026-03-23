@@ -1,11 +1,9 @@
 using UnityEngine;
 using Fusion;
 using Fusion.Sockets;
+using System.Collections;
+using System.Collections.Generic;
 
-/// <summary>
-/// Spawn nhân vật trong game scene
-/// Gắn vào GameObject trong scene Game
-/// </summary>
 public class PlayerSpawner : FusionCallbacksBase
 {
     [Header("Spawn Settings")]
@@ -18,20 +16,15 @@ public class PlayerSpawner : FusionCallbacksBase
         new Vector3( 5, 5, 0)
     };
 
-    private NetworkRunner _runner;
-    private bool          _isRegistered = false;
+    private NetworkRunner      _runner;
+    private bool               _isRegistered   = false;
+    private HashSet<PlayerRef> _spawnedPlayers = new HashSet<PlayerRef>();
 
-    private void Awake()
-    {
-        Debug.Log("[PlayerSpawner] Awake");
-    }
+    private void Awake() => Debug.Log("[PlayerSpawner] Awake");
 
     private void Update()
     {
-        // ✅ Thử đăng ký mỗi frame cho đến khi thành công
-        // Giống cách InputHandler làm — đảm bảo không bị miss
-        if (!_isRegistered)
-            TryRegister();
+        if (!_isRegistered) TryRegister();
     }
 
     private void TryRegister()
@@ -44,37 +37,35 @@ public class PlayerSpawner : FusionCallbacksBase
         _isRegistered = true;
         Debug.Log($"[PlayerSpawner] Đã đăng ký | IsServer={runner.IsServer}");
 
-        // Spawn ngay cho các player đã có mặt
         if (_runner.IsServer)
-        {
-            foreach (PlayerRef player in _runner.ActivePlayers)
-                SpawnPlayer(_runner, player);
-        }
+            StartCoroutine(SpawnAllDelayed());
     }
 
-    private void OnDestroy()
+    private IEnumerator SpawnAllDelayed()
     {
-        _runner?.RemoveCallbacks(this);
+        yield return new WaitForSeconds(0.5f);
+        foreach (PlayerRef player in _runner.ActivePlayers)
+            SpawnPlayer(_runner, player);
     }
 
-    public override void OnSceneLoadDone(NetworkRunner runner)
-    {
-        Debug.Log("[PlayerSpawner] OnSceneLoadDone");
-        if (!runner.IsServer) return;
-
-        foreach (PlayerRef player in runner.ActivePlayers)
-            SpawnPlayer(runner, player);
-    }
+    private void OnDestroy() => _runner?.RemoveCallbacks(this);
 
     public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
         Debug.Log($"[PlayerSpawner] OnPlayerJoined: {player}");
         if (!runner.IsServer) return;
+        StartCoroutine(SpawnPlayerDelayed(runner, player));
+    }
+
+    private IEnumerator SpawnPlayerDelayed(NetworkRunner runner, PlayerRef player)
+    {
+        yield return new WaitForSeconds(0.3f);
         SpawnPlayer(runner, player);
     }
 
     public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
     {
+        _spawnedPlayers.Remove(player);
         if (!runner.IsServer) return;
         if (runner.TryGetPlayerObject(player, out NetworkObject obj))
             runner.Despawn(obj);
@@ -82,22 +73,32 @@ public class PlayerSpawner : FusionCallbacksBase
 
     private void SpawnPlayer(NetworkRunner runner, PlayerRef player)
     {
-        // Tránh spawn 2 lần
+        if (_spawnedPlayers.Contains(player)) return;
         if (runner.TryGetPlayerObject(player, out _))
         {
-            Debug.Log($"[PlayerSpawner] {player} đã có object, bỏ qua.");
+            _spawnedPlayers.Add(player);
             return;
         }
 
-        Vector3       pos = GetSpawnPoint(player);
+        Vector3 pos = GetSpawnPoint(player);
+
+        // ✅ Dùng onBeforeSpawned để set position chính xác trước khi object active
         NetworkObject obj = runner.Spawn(
             playerPrefab,
             pos,
             Quaternion.identity,
-            inputAuthority: player  // ✅ gán inputAuthority đúng player
+            inputAuthority: player,
+            onBeforeSpawned: (r, networkObj) =>
+            {
+                // Set position ngay trước khi spawn
+                networkObj.transform.position = pos;
+                Debug.Log($"[PlayerSpawner] onBeforeSpawned {player} tại {pos}");
+            }
         );
+
         runner.SetPlayerObject(player, obj);
-        Debug.Log($"[PlayerSpawner] Spawned {player} tại {pos}");
+        _spawnedPlayers.Add(player);
+        Debug.Log($"[PlayerSpawner] ✅ Spawned {player} tại {pos}");
     }
 
     private Vector3 GetSpawnPoint(PlayerRef player)
