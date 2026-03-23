@@ -58,14 +58,20 @@ public class FusionNetworkManager : FusionCallbacksBase
             Runner.AddCallbacks(this);
         }
 
+        var sceneManager = Runner.GetComponent<NetworkSceneManagerDefault>()
+                        ?? Runner.gameObject.AddComponent<NetworkSceneManagerDefault>();
+
         var args = new StartGameArgs
         {
             GameMode     = mode,
             SessionName  = sessionName,
             PlayerCount  = maxPlayers,
-            // Region được cài trong PhotonAppSettings asset (xem hướng dẫn bên dưới)
-            SceneManager = Runner.GetComponent<NetworkSceneManagerDefault>()
-                        ?? Runner.gameObject.AddComponent<NetworkSceneManagerDefault>()
+            SceneManager = sceneManager,
+
+            // FIX: Truyền Scene vào args để Fusion + NetworkSceneManagerDefault
+            // biết scene nào cần load và sync cho tất cả client.
+            // Không có dòng này → cả Host lẫn Client đều không load lobby.
+            Scene        = SceneRef.FromIndex(lobbySceneIndex),
         };
 
         Debug.Log($"[FusionNetworkManager] Bắt đầu {mode}: {sessionName}");
@@ -79,18 +85,13 @@ public class FusionNetworkManager : FusionCallbacksBase
         }
         else
         {
-            Debug.Log("[FusionNetworkManager] Thành công! Đang load Lobby...");
+            Debug.Log("[FusionNetworkManager] Thành công! Lobby đang được load...");
             OnJoinedSessionEvent?.Invoke();
 
-            if (Runner.IsServer)
-            {
-                Debug.Log($"[FusionNetworkManager] Host load scene index: {lobbySceneIndex}");
-                Runner.LoadScene(SceneRef.FromIndex(lobbySceneIndex));
-            }
-            else
-            {
-                Debug.Log("[FusionNetworkManager] Client chờ Host load scene...");
-            }
+            // FIX: Không cần gọi Runner.LoadScene() thủ công nữa.
+            // Khi StartGameArgs.Scene được set, NetworkSceneManagerDefault tự động
+            // load scene cho Host và sync sang tất cả Client.
+            // Gọi LoadScene() thêm lần nữa sẽ gây load 2 lần.
         }
     }
 
@@ -148,7 +149,7 @@ public class FusionNetworkManager : FusionCallbacksBase
         => Debug.Log("[FusionNetworkManager] Scene load xong!");
 
     public override void OnSceneLoadStart(NetworkRunner runner)
-        => Debug.Log($"[FusionNetworkManager] Bắt đầu load scene...");
+        => Debug.Log("[FusionNetworkManager] Bắt đầu load scene...");
 
     public bool       IsConnected     => Runner != null && Runner.IsRunning;
     public bool       IsHost          => Runner != null && Runner.IsServer;
