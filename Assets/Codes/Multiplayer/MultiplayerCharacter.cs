@@ -23,6 +23,7 @@ public class MultiplayerCharacter : NetworkBehaviour
     private ChangeDetector _changes;
     private Rigidbody2D    rb;
     private Vector2        currentVelocity;
+    private bool           _localSetupDone = false; // ✅ tránh setup 2 lần
 
     private static readonly int AnimSpeed    = Animator.StringToHash("Speed");
     private static readonly int AnimMoveX    = Animator.StringToHash("MoveX");
@@ -41,33 +42,48 @@ public class MultiplayerCharacter : NetworkBehaviour
     public override void Spawned()
     {
         _changes = GetChangeDetector(ChangeDetector.Source.SimulationState);
+        Debug.Log($"[MultiplayerCharacter] Spawned | HasInputAuthority={HasInputAuthority} | HasStateAuthority={HasStateAuthority}");
 
-        if (HasInputAuthority)
-        {
-            // Lưu tên và nhân vật lên network
-            CharacterIndex = playerData != null ? playerData.characterIndex : 0;
-            NetworkedName  = playerData != null && !string.IsNullOrEmpty(playerData.playerName)
-                             ? playerData.playerName
-                             : $"Player {Runner.LocalPlayer.PlayerId}";
-
-            gameObject.name = $"{GetCharName(CharacterIndex)}_P{Runner.LocalPlayer.PlayerId}";
-
-            // ✅ Gắn camera theo local player
-            AttachCamera();
-
-            Debug.Log($"[MultiplayerCharacter] Spawn local: {NetworkedName} | {GetCharName(CharacterIndex)}");
-        }
-        else
-        {
-            Debug.Log($"[MultiplayerCharacter] Spawn remote player");
-        }
-
+        // Thử setup ngay nếu HasInputAuthority đã đúng
+        TrySetupLocalPlayer();
         ApplyVisuals();
     }
 
-    /// <summary>
-    /// Gắn CameraFollow vào Main Camera để theo dõi nhân vật này
-    /// </summary>
+    public override void Render()
+    {
+        // ✅ Thử setup mỗi frame cho đến khi thành công
+        // Cần thiết vì HasInputAuthority có thể chưa đúng lúc Spawned()
+        if (!_localSetupDone)
+            TrySetupLocalPlayer();
+
+        foreach (var change in _changes.DetectChanges(this))
+        {
+            if (change == nameof(CharacterIndex) || change == nameof(NetworkedName))
+                ApplyVisuals();
+        }
+    }
+
+    private void TrySetupLocalPlayer()
+    {
+        if (!HasInputAuthority) return;
+        if (_localSetupDone) return;
+
+        _localSetupDone = true;
+
+        // Set networked data
+        CharacterIndex = playerData != null ? playerData.characterIndex : 0;
+        NetworkedName  = playerData != null && !string.IsNullOrEmpty(playerData.playerName)
+                         ? playerData.playerName
+                         : $"Player {Runner.LocalPlayer.PlayerId}";
+
+        gameObject.name = $"{GetCharName(CharacterIndex)}_P{Runner.LocalPlayer.PlayerId}";
+
+        // Gắn camera
+        AttachCamera();
+
+        Debug.Log($"[MultiplayerCharacter] ✅ Local setup: {NetworkedName} | {GetCharName(CharacterIndex)}");
+    }
+
     private void AttachCamera()
     {
         Camera cam = Camera.main;
@@ -77,21 +93,10 @@ public class MultiplayerCharacter : NetworkBehaviour
             return;
         }
 
-        CameraFollow follow = cam.GetComponent<CameraFollow>();
-        if (follow == null)
-            follow = cam.gameObject.AddComponent<CameraFollow>();
-
+        CameraFollow follow = cam.GetComponent<CameraFollow>()
+                           ?? cam.gameObject.AddComponent<CameraFollow>();
         follow.SetTarget(transform);
-        Debug.Log($"[MultiplayerCharacter] Camera đã gắn vào: {gameObject.name}");
-    }
-
-    public override void Render()
-    {
-        foreach (var change in _changes.DetectChanges(this))
-        {
-            if (change == nameof(CharacterIndex) || change == nameof(NetworkedName))
-                ApplyVisuals();
-        }
+        Debug.Log($"[MultiplayerCharacter] Camera gắn vào: {gameObject.name}");
     }
 
     private void ApplyVisuals()
@@ -122,8 +127,6 @@ public class MultiplayerCharacter : NetworkBehaviour
     private void Update()
     {
         if (animator == null) return;
-
-        // Dùng NetworkedVelocity cho remote player để animation mượt
         Vector2 vel   = HasInputAuthority ? currentVelocity : NetworkedVelocity;
         float   speed = vel.magnitude;
         animator.SetFloat(AnimSpeed,   speed);
