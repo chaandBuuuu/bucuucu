@@ -16,6 +16,7 @@ public class MultiplayerCharacter : NetworkBehaviour
     [SerializeField] private PlayerData     playerData;
 
     [Networked] public  int     CharacterIndex    { get; private set; }
+    [Networked] public  string  NetworkedName     { get; private set; }
     [Networked] private Vector2 NetworkedVelocity { get; set; }
     [Networked] private float   NetworkedRotation { get; set; }
 
@@ -43,17 +44,52 @@ public class MultiplayerCharacter : NetworkBehaviour
 
         if (HasInputAuthority)
         {
-            CharacterIndex  = playerData != null ? playerData.characterIndex : 0;
-            gameObject.name = $"{GetName(CharacterIndex)}_P{Runner.LocalPlayer.PlayerId}";
+            // Lưu tên và nhân vật lên network
+            CharacterIndex = playerData != null ? playerData.characterIndex : 0;
+            NetworkedName  = playerData != null && !string.IsNullOrEmpty(playerData.playerName)
+                             ? playerData.playerName
+                             : $"Player {Runner.LocalPlayer.PlayerId}";
+
+            gameObject.name = $"{GetCharName(CharacterIndex)}_P{Runner.LocalPlayer.PlayerId}";
+
+            // ✅ Gắn camera theo local player
+            AttachCamera();
+
+            Debug.Log($"[MultiplayerCharacter] Spawn local: {NetworkedName} | {GetCharName(CharacterIndex)}");
         }
+        else
+        {
+            Debug.Log($"[MultiplayerCharacter] Spawn remote player");
+        }
+
         ApplyVisuals();
+    }
+
+    /// <summary>
+    /// Gắn CameraFollow vào Main Camera để theo dõi nhân vật này
+    /// </summary>
+    private void AttachCamera()
+    {
+        Camera cam = Camera.main;
+        if (cam == null)
+        {
+            Debug.LogWarning("[MultiplayerCharacter] Không tìm thấy Main Camera!");
+            return;
+        }
+
+        CameraFollow follow = cam.GetComponent<CameraFollow>();
+        if (follow == null)
+            follow = cam.gameObject.AddComponent<CameraFollow>();
+
+        follow.SetTarget(transform);
+        Debug.Log($"[MultiplayerCharacter] Camera đã gắn vào: {gameObject.name}");
     }
 
     public override void Render()
     {
         foreach (var change in _changes.DetectChanges(this))
         {
-            if (change == nameof(CharacterIndex))
+            if (change == nameof(CharacterIndex) || change == nameof(NetworkedName))
                 ApplyVisuals();
         }
     }
@@ -86,6 +122,8 @@ public class MultiplayerCharacter : NetworkBehaviour
     private void Update()
     {
         if (animator == null) return;
+
+        // Dùng NetworkedVelocity cho remote player để animation mượt
         Vector2 vel   = HasInputAuthority ? currentVelocity : NetworkedVelocity;
         float   speed = vel.magnitude;
         animator.SetFloat(AnimSpeed,   speed);
@@ -94,7 +132,7 @@ public class MultiplayerCharacter : NetworkBehaviour
         animator.SetBool(AnimIsMoving, speed > 0.1f);
     }
 
-    private string GetName(int i) => i switch
+    private string GetCharName(int i) => i switch
     {
         0 => "Hacker", 1 => "Ghost_Hunter", 2 => "Priest", 3 => "Scientist", _ => "Unknown"
     };
@@ -109,5 +147,7 @@ public class MultiplayerCharacter : NetworkBehaviour
     };
 
     public bool   IsOwner        => HasInputAuthority;
-    public string PlayerNickname => $"Player {Object.InputAuthority.PlayerId}";
+    public string PlayerNickname => !string.IsNullOrEmpty(NetworkedName)
+                                    ? NetworkedName
+                                    : $"Player {Object.InputAuthority.PlayerId}";
 }
