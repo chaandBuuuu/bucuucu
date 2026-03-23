@@ -1,6 +1,7 @@
 using UnityEngine;
 using Fusion;
 using Fusion.Sockets;
+using System.Collections;
 
 public class LobbySpawner : FusionCallbacksBase
 {
@@ -19,7 +20,7 @@ public class LobbySpawner : FusionCallbacksBase
         StartCoroutine(RegisterWhenReady());
     }
 
-    private System.Collections.IEnumerator RegisterWhenReady()
+    private IEnumerator RegisterWhenReady()
     {
         while (FusionNetworkManager.Instance?.Runner == null)
             yield return null;
@@ -31,7 +32,7 @@ public class LobbySpawner : FusionCallbacksBase
         if (_runner.IsServer && startButtonObj != null)
             startButtonObj.SetActive(true);
 
-        // Late-spawn cho các player đã join
+        // Late-spawn cho các player đã join trước khi scene load xong
         if (_runner.IsServer)
         {
             foreach (PlayerRef player in _runner.ActivePlayers)
@@ -55,7 +56,13 @@ public class LobbySpawner : FusionCallbacksBase
     }
 
     public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
-        => Debug.Log($"[LobbySpawner] Player left: {player}");
+    {
+        if (!runner.IsServer) return;
+        // FIX: Despawn object khi player rời lobby
+        if (runner.TryGetPlayerObject(player, out NetworkObject obj))
+            runner.Despawn(obj);
+        Debug.Log($"[LobbySpawner] Player left: {player}");
+    }
 
     public void OnStartGameClicked()
     {
@@ -64,8 +71,7 @@ public class LobbySpawner : FusionCallbacksBase
         _runner.LoadScene(SceneRef.FromIndex(2));
     }
 
-    // ✅ Dùng async spawn để tránh lỗi "Failed to load prefab synchronously"
-    private System.Collections.IEnumerator SpawnAsync(NetworkRunner runner, PlayerRef player)
+    private IEnumerator SpawnAsync(NetworkRunner runner, PlayerRef player)
     {
         // Chờ 1 frame để Fusion sẵn sàng
         yield return null;
@@ -74,7 +80,17 @@ public class LobbySpawner : FusionCallbacksBase
         if (runner.TryGetPlayerObject(player, out _)) yield break;
 
         Vector3 pos = GetSpawnPoint(player);
-        runner.Spawn(lobbyPlayerPrefab, pos, Quaternion.identity, inputAuthority: player);
+
+        // FIX: Bỏ onBeforeSpawned — chỉ truyền pos vào Spawn() là đủ và chính xác.
+        // onBeforeSpawned set transform.position nhưng Fusion override lại bằng pos arg → sai vị trí.
+        NetworkObject obj = runner.Spawn(
+            lobbyPlayerPrefab,
+            pos,
+            Quaternion.identity,
+            inputAuthority: player
+        );
+
+        runner.SetPlayerObject(player, obj);
         Debug.Log($"[LobbySpawner] Spawn {player} tại {pos}");
     }
 

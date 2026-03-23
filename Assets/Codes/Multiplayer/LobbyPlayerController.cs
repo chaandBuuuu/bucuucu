@@ -5,6 +5,7 @@ using Fusion;
 /// Điều khiển nhân vật lobby — Fusion version
 /// </summary>
 [RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent(typeof(NetworkTransform))] // FIX: thêm NetworkTransform để sync position cho remote player
 public class LobbyPlayerController : NetworkBehaviour
 {
     [Header("Di Chuyển")]
@@ -39,24 +40,38 @@ public class LobbyPlayerController : NetworkBehaviour
 
     public override void Spawned()
     {
-        if (!HasInputAuthority) return;
+        // FIX: Remote player dùng Kinematic để NetworkTransform điều khiển transform
+        if (!HasInputAuthority)
+        {
+            rb.bodyType  = RigidbodyType2D.Kinematic;
+            rb.simulated = false;
+        }
 
-        gameObject.name = $"LobbyPlayer_{Runner.LocalPlayer}";
+        // FIX: Setup visual cho TẤT CẢ player (cả local lẫn remote), không chỉ HasInputAuthority
         int colorIdx = (Object.InputAuthority.PlayerId - 1) % 4;
         SetColor(colorIdx);
-        ShowName($"Player {Runner.LocalPlayer.PlayerId}");
-        Debug.Log("[LobbyPlayerController] Sẵn sàng!");
+        ShowName($"Player {Object.InputAuthority.PlayerId}");
+
+        if (HasInputAuthority)
+        {
+            gameObject.name = $"LobbyPlayer_{Runner.LocalPlayer}";
+            Debug.Log("[LobbyPlayerController] Sẵn sàng!");
+        }
     }
 
     public override void FixedUpdateNetwork()
     {
+        // FIX: Dùng HasInputAuthority thay vì chỉ GetInput
+        // GetInput() trả true cho cả StateAuthority (Host) → Host chạy physics cho client
+        // HasInputAuthority đảm bảo chỉ owner mới move chính mình
+        if (!HasInputAuthority) return;
         if (!GetInput(out NetworkInputData input)) return;
 
         Vector2 target  = input.Direction.normalized * moveSpeed;
         float   blend   = input.Direction.sqrMagnitude > 0.01f ? acceleration : deceleration;
 
-        currentVelocity = Vector2.MoveTowards(currentVelocity, target, blend * Runner.DeltaTime);
-        rb.linearVelocity   = currentVelocity;
+        currentVelocity   = Vector2.MoveTowards(currentVelocity, target, blend * Runner.DeltaTime);
+        rb.linearVelocity = currentVelocity;
         NetworkedVelocity = currentVelocity;
 
         if (faceDir && input.Direction.sqrMagnitude > 0.01f)
@@ -64,6 +79,7 @@ public class LobbyPlayerController : NetworkBehaviour
             float angle = Mathf.Atan2(input.Direction.y, input.Direction.x) * Mathf.Rad2Deg;
             transform.rotation = Quaternion.AngleAxis(angle - 90f, Vector3.forward);
         }
+        // NetworkTransform tự sync position/rotation — không cần thêm gì
     }
 
     private void Update()
