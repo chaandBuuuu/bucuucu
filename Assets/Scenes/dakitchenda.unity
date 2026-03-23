@@ -13868,9 +13868,9 @@ MonoBehaviour:
   playerPrefab: {fileID: 4656603236366408920, guid: 813c709c6e6596e4fbee03d49ec0c481, type: 3}
   spawnPoints:
   - {x: -3, y: 0, z: 0}
-  - {x: -4, y: 0, z: 0}
-  - {x: -5, y: 0, z: 0}
-  - {x: -6, y: 0, z: 0}
+  - {x: -2, y: 0, z: 0}
+  - {x: -1, y: 0, z: 0}
+  - {x: 0, y: 0, z: 0}
 --- !u!4 &1414457992
 Transform:
   m_ObjectHideFlags: 0
