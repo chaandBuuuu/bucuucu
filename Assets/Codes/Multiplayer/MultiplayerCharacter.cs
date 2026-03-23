@@ -2,6 +2,7 @@ using UnityEngine;
 using Fusion;
 
 [RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent(typeof(NetworkTransform))]
 public class MultiplayerCharacter : NetworkBehaviour
 {
     [Header("Di Chuyển")]
@@ -18,6 +19,8 @@ public class MultiplayerCharacter : NetworkBehaviour
     [Networked] public  int     CharacterIndex    { get; private set; }
     [Networked] public  string  NetworkedName     { get; private set; }
     [Networked] private Vector2 NetworkedVelocity { get; set; }
+    [Networked] private Vector3 NetworkedPos      { get; set; }
+    [Networked] private float   NetworkedRot      { get; set; }
 
     private ChangeDetector _changes;
     private Rigidbody2D    rb;
@@ -43,9 +46,9 @@ public class MultiplayerCharacter : NetworkBehaviour
         _changes = GetChangeDetector(ChangeDetector.Source.SimulationState);
         Debug.Log($"[MultiplayerCharacter] Spawned | HasInputAuthority={HasInputAuthority} | HasStateAuthority={HasStateAuthority}");
 
-        // Remote player: tắt physics local
         if (!HasInputAuthority)
         {
+            // Remote player: tắt physics, NetworkTransform điều khiển
             rb.bodyType  = RigidbodyType2D.Kinematic;
             rb.simulated = false;
         }
@@ -56,8 +59,18 @@ public class MultiplayerCharacter : NetworkBehaviour
 
     public override void Render()
     {
-        if (!_localSetupDone)
-            TrySetupLocalPlayer();
+        if (!_localSetupDone) TrySetupLocalPlayer();
+
+        // ✅ Remote player: đọc NetworkedPos để cập nhật vị trí
+        if (!HasInputAuthority && Object != null)
+        {
+            transform.position = Vector3.Lerp(
+                transform.position,
+                NetworkedPos,
+                10f * Time.deltaTime
+            );
+            transform.rotation = Quaternion.Euler(0, 0, NetworkedRot);
+        }
 
         foreach (var change in _changes.DetectChanges(this))
             if (change == nameof(CharacterIndex) || change == nameof(NetworkedName))
@@ -86,7 +99,8 @@ public class MultiplayerCharacter : NetworkBehaviour
     {
         Camera cam = Camera.main;
         if (cam == null) return;
-        var follow = cam.GetComponent<CameraFollow>() ?? cam.gameObject.AddComponent<CameraFollow>();
+        var follow = cam.GetComponent<CameraFollow>()
+                  ?? cam.gameObject.AddComponent<CameraFollow>();
         follow.SetTarget(transform);
         Debug.Log($"[MultiplayerCharacter] Camera → {gameObject.name}");
     }
@@ -99,6 +113,7 @@ public class MultiplayerCharacter : NetworkBehaviour
 
     public override void FixedUpdateNetwork()
     {
+        if (!HasStateAuthority) return;
         if (!GetInput(out NetworkInputData input)) return;
 
         Vector2 target  = input.Direction.normalized * moveSpeed;
@@ -108,10 +123,14 @@ public class MultiplayerCharacter : NetworkBehaviour
         rb.linearVelocity = currentVelocity;
         NetworkedVelocity = currentVelocity;
 
+        // ✅ Sync position và rotation thủ công cho Client đọc
+        NetworkedPos = transform.position;
+
         if (faceDir && input.Direction.sqrMagnitude > 0.01f)
         {
             float angle = Mathf.Atan2(input.Direction.y, input.Direction.x) * Mathf.Rad2Deg;
             transform.rotation = Quaternion.AngleAxis(angle - 90f, Vector3.forward);
+            NetworkedRot = transform.eulerAngles.z;
         }
     }
 
