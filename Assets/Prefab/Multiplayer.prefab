@@ -15,6 +15,7 @@ GameObject:
   - component: {fileID: 5263183803054461127}
   - component: {fileID: 4687479788365851638}
   - component: {fileID: 8914928702432041043}
+  - component: {fileID: 5680631351196203568}
   m_Layer: 0
   m_Name: Multiplayer
   m_TagString: Player
@@ -56,6 +57,7 @@ MonoBehaviour:
   NetworkedBehaviours:
   - {fileID: 4979668168736582327}
   - {fileID: 8914928702432041043}
+  - {fileID: 5680631351196203568}
   ForceRemoteRenderTimeframe: 0
 --- !u!50 &4310882387403151695
 Rigidbody2D:
@@ -104,6 +106,7 @@ MonoBehaviour:
   animator: {fileID: 0}
   playerData: {fileID: 0}
   _CharacterIndex: 0
+  _NetworkedName: 
 --- !u!212 &5263183803054461127
 SpriteRenderer:
   serializedVersion: 3
@@ -223,3 +226,20 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::InventorySystem
   maxSlots: 6
+--- !u!114 &5680631351196203568
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6484703976291237605}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 158639473, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkTransform
+  _stateAuthorityChangeErrorCorrectionDelta: 0
+  SyncScale: 0
+  SyncParent: 0
+  _autoAOIOverride: 1
+  DisableSharedModeInterpolation: 0

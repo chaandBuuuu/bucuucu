@@ -1,7 +1,11 @@
 using UnityEngine;
 using Fusion;
 
+/// <summary>
+/// Yêu cầu prefab có thêm component NetworkTransform để sync position tự động
+/// </summary>
 [RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent(typeof(NetworkTransform))] // ✅ bắt buộc có NetworkTransform
 public class MultiplayerCharacter : NetworkBehaviour
 {
     [Header("Di Chuyển")]
@@ -18,12 +22,11 @@ public class MultiplayerCharacter : NetworkBehaviour
     [Networked] public  int     CharacterIndex    { get; private set; }
     [Networked] public  string  NetworkedName     { get; private set; }
     [Networked] private Vector2 NetworkedVelocity { get; set; }
-    [Networked] private float   NetworkedRotation { get; set; }
 
     private ChangeDetector _changes;
     private Rigidbody2D    rb;
     private Vector2        currentVelocity;
-    private bool           _localSetupDone = false; // ✅ tránh setup 2 lần
+    private bool           _localSetupDone = false;
 
     private static readonly int AnimSpeed    = Animator.StringToHash("Speed");
     private static readonly int AnimMoveX    = Animator.StringToHash("MoveX");
@@ -37,6 +40,10 @@ public class MultiplayerCharacter : NetworkBehaviour
         if (animator       == null) animator       = GetComponent<Animator>();
         rb.gravityScale   = 0f;
         rb.freezeRotation = true;
+
+        // ✅ Remote player không cần physics local
+        if (!HasInputAuthority)
+            rb.bodyType = RigidbodyType2D.Kinematic;
     }
 
     public override void Spawned()
@@ -44,15 +51,17 @@ public class MultiplayerCharacter : NetworkBehaviour
         _changes = GetChangeDetector(ChangeDetector.Source.SimulationState);
         Debug.Log($"[MultiplayerCharacter] Spawned | HasInputAuthority={HasInputAuthority} | HasStateAuthority={HasStateAuthority}");
 
-        // Thử setup ngay nếu HasInputAuthority đã đúng
+        // Remote player: tắt physics
+        if (!HasInputAuthority)
+            rb.bodyType = RigidbodyType2D.Kinematic;
+
         TrySetupLocalPlayer();
         ApplyVisuals();
     }
 
     public override void Render()
     {
-        // ✅ Thử setup mỗi frame cho đến khi thành công
-        // Cần thiết vì HasInputAuthority có thể chưa đúng lúc Spawned()
+        // Thử setup mỗi frame cho đến khi thành công
         if (!_localSetupDone)
             TrySetupLocalPlayer();
 
@@ -65,20 +74,18 @@ public class MultiplayerCharacter : NetworkBehaviour
 
     private void TrySetupLocalPlayer()
     {
-        if (!HasInputAuthority) return;
-        if (_localSetupDone) return;
-
+        if (!HasInputAuthority || _localSetupDone) return;
         _localSetupDone = true;
 
-        // Set networked data
+        // Bật lại physics cho local player
+        rb.bodyType = RigidbodyType2D.Dynamic;
+
         CharacterIndex = playerData != null ? playerData.characterIndex : 0;
         NetworkedName  = playerData != null && !string.IsNullOrEmpty(playerData.playerName)
                          ? playerData.playerName
                          : $"Player {Runner.LocalPlayer.PlayerId}";
 
         gameObject.name = $"{GetCharName(CharacterIndex)}_P{Runner.LocalPlayer.PlayerId}";
-
-        // Gắn camera
         AttachCamera();
 
         Debug.Log($"[MultiplayerCharacter] ✅ Local setup: {NetworkedName} | {GetCharName(CharacterIndex)}");
@@ -87,16 +94,11 @@ public class MultiplayerCharacter : NetworkBehaviour
     private void AttachCamera()
     {
         Camera cam = Camera.main;
-        if (cam == null)
-        {
-            Debug.LogWarning("[MultiplayerCharacter] Không tìm thấy Main Camera!");
-            return;
-        }
-
+        if (cam == null) return;
         CameraFollow follow = cam.GetComponent<CameraFollow>()
                            ?? cam.gameObject.AddComponent<CameraFollow>();
         follow.SetTarget(transform);
-        Debug.Log($"[MultiplayerCharacter] Camera gắn vào: {gameObject.name}");
+        Debug.Log($"[MultiplayerCharacter] Camera → {gameObject.name}");
     }
 
     private void ApplyVisuals()
@@ -120,7 +122,6 @@ public class MultiplayerCharacter : NetworkBehaviour
         {
             float angle = Mathf.Atan2(input.Direction.y, input.Direction.x) * Mathf.Rad2Deg;
             transform.rotation = Quaternion.AngleAxis(angle - 90f, Vector3.forward);
-            NetworkedRotation  = transform.eulerAngles.z;
         }
     }
 
