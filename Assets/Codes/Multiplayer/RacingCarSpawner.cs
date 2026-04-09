@@ -22,18 +22,24 @@ public class RacingCarSpawner : FusionCallbacksBase
         _spawnedPlayers.Clear();
     }
 
-    private void Update()
+    private void Start()
     {
-        if (_registered) return;
+        StartCoroutine(RegisterWhenReady());
+    }
 
-        var fm = FusionNetworkManager.Instance;
-        if (fm == null || fm.Runner == null || !fm.Runner.IsRunning) return;
+    private System.Collections.IEnumerator RegisterWhenReady()
+    {
+        // Đợi FusionNetworkManager & Runner sẵn sàng
+        while (FusionNetworkManager.Instance?.Runner == null || !FusionNetworkManager.Instance.Runner.IsRunning)
+            yield return null;
 
-        _runner = fm.Runner;
+        if (_registered) yield break;
+
+        _runner = FusionNetworkManager.Instance.Runner;
         _runner.AddCallbacks(this);
         _registered = true;
 
-        Debug.Log("[RacingCarSpawner] Đã đăng ký callback sau khi load scene");
+        Debug.Log("[RacingCarSpawner] ✅ Callback đã đăng ký - sẵn sàng spawn");
 
         if (_runner.IsServer)
             StartCoroutine(SpawnAllPlayersDelayed());

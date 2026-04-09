@@ -43,11 +43,12 @@ public class InputHandler : FusionCallbacksBase
 
     private System.Collections.IEnumerator RegisterWhenReady()
     {
-        while (FusionNetworkManager.Instance?.Runner == null)
+        // Đợi Runner sẵn sàng
+        while (FusionNetworkManager.Instance?.Runner == null || !FusionNetworkManager.Instance.Runner.IsRunning)
             yield return null;
 
         FusionNetworkManager.Instance.Runner.AddCallbacks(this);
-        Debug.Log("[InputHandler] Input handler registered");
+        Debug.Log("[InputHandler] ✅ Input handler đã đăng ký");
     }
 
     private void OnDestroy()
