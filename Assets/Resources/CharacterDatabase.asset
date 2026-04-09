@@ -1,0 +1,57 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 0}
+  m_Name: CharacterDatabase
+  m_EditorClassIdentifier: Assembly-CSharp::CharacterDatabase
+  characters:
+  - characterId: 0
+    characterName: Hunt #1 - Root
+    role: 0
+    maxHealth: 100
+    moveSpeed: 4.5
+    uiColor: {r: 0.8, g: 0.4, b: 0.4, a: 1}
+    description: Slower but leaves root trails. Pull survivors with vines.
+  - characterId: 1
+    characterName: Hunt #2 - Eyes
+    role: 0
+    maxHealth: 100
+    moveSpeed: 5
+    uiColor: {r: 0.9, g: 0.7, b: 0.2, a: 1}
+    description: Cone vision. Can narrow vision to shoot deadly beams.
+  - characterId: 2
+    characterName: Survival #1 - Marksman
+    role: 1
+    maxHealth: 80
+    moveSpeed: 5.5
+    uiColor: {r: 0.4, g: 0.8, b: 0.4, a: 1}
+    description: Mark bullets stun, Tiger bullets do more damage.
+  - characterId: 3
+    characterName: Survival #2 - Boombox
+    role: 1
+    maxHealth: 85
+    moveSpeed: 5.2
+    uiColor: {r: 0.4, g: 0.4, b: 0.8, a: 1}
+    description: Place boombox to grant speed. Clap to stun hunters.
+  - characterId: 4
+    characterName: Survival #3 - Lumberjack
+    role: 1
+    maxHealth: 90
+    moveSpeed: 5
+    uiColor: {r: 0.8, g: 0.6, b: 0.2, a: 1}
+    description: Speed boost when holding wood. Throw wood at hunters.
+  - characterId: 5
+    characterName: Survival #4 - Support
+    role: 1
+    maxHealth: 75
+    moveSpeed: 5
+    uiColor: {r: 0.6, g: 0.4, b: 0.8, a: 1}
+    description: Support teammates with buffs and area stuns.

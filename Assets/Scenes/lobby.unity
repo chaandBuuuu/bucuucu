@@ -168,7 +168,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 181201e62fbf4564b8fd66313c44d695, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameStartController
-  requiredPlayers: 1
+  requiredPlayers: 2
   checkInterval: 1
   statusText: {fileID: 0}
 --- !u!4 &137869851

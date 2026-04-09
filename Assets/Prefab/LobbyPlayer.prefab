@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 1446658883326904683}
   - component: {fileID: 4581316745562881710}
   - component: {fileID: -7310034576347035487}
+  - component: {fileID: 8787990733073711272}
   m_Layer: 0
   m_Name: LobbyPlayer
   m_TagString: Player
@@ -54,6 +55,7 @@ MonoBehaviour:
   NestedObjects: []
   NetworkedBehaviours:
   - {fileID: 4581316745562881710}
+  - {fileID: 8787990733073711272}
   ForceRemoteRenderTimeframe: 0
 --- !u!50 &1516360499765593391
 Rigidbody2D:
@@ -207,3 +209,20 @@ BoxCollider2D:
   m_AutoTiling: 0
   m_Size: {x: 0.18, y: 0.36}
   m_EdgeRadius: 0
+--- !u!114 &8787990733073711272
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2360053350446933340}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 158639473, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkTransform
+  _stateAuthorityChangeErrorCorrectionDelta: 0
+  SyncScale: 0
+  SyncParent: 0
+  _autoAOIOverride: 1
+  DisableSharedModeInterpolation: 0
