@@ -4,7 +4,7 @@ using Fusion;
 using UnityEngine.UI;
 
 /// <summary>
-/// UI cho cuộc đua
+/// UI cho cuộc đua - ĐÃ SỬA an toàn khi RaceManager chưa Spawned
 /// </summary>
 public class RaceUI : MonoBehaviour
 {
@@ -56,7 +56,7 @@ public class RaceUI : MonoBehaviour
             UpdatePowerupUI();
         }
 
-        UpdateTimerUI();
+        UpdateTimerUI();   // vẫn gọi, nhưng bên trong đã an toàn
     }
 
     private void FindLocalCar()
@@ -83,13 +83,12 @@ public class RaceUI : MonoBehaviour
 
     private void UpdateTimerUI()
     {
-        if (timerText != null && _raceManager != null)
-        {
-            float time = _raceManager.GetRaceTime();
-            int minutes = (int)(time / 60f);
-            int seconds = (int)(time % 60f);
-            timerText.text = $"Time: {minutes:00}:{seconds:00}";
-        }
+        if (timerText == null || _raceManager == null) return;
+
+        float time = _raceManager.GetRaceTime();   // đã an toàn
+        int minutes = (int)(time / 60f);
+        int seconds = (int)(time % 60f);
+        timerText.text = $"Time: {minutes:00}:{seconds:00}";
     }
 
     private void UpdateSpeedUI()
@@ -120,10 +119,10 @@ public class RaceUI : MonoBehaviour
         }
     }
 
+    // Các hàm còn lại giữ nguyên (OnLapComplete, OnRaceEnd, ...)
     private void OnLapComplete(CarController car, int lap)
     {
         if (_localCar == null) return;
-        
         if (car == _localCar)
         {
             lapText.color = Color.yellow;
@@ -133,8 +132,7 @@ public class RaceUI : MonoBehaviour
 
     private void ResetLapColor()
     {
-        if (lapText != null)
-            lapText.color = Color.white;
+        if (lapText != null) lapText.color = Color.white;
     }
 
     private void OnRaceEnd(CarController winner)
@@ -160,15 +158,6 @@ public class RaceUI : MonoBehaviour
         };
     }
 
-    private void OnMainMenuClicked()
-    {
-        UnityEngine.SceneManagement.SceneManager.LoadScene("Menu");
-    }
-
-    private void OnRestartClicked()
-    {
-        UnityEngine.SceneManagement.SceneManager.LoadScene(
-            UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
-        );
-    }
+    private void OnMainMenuClicked() => UnityEngine.SceneManagement.SceneManager.LoadScene("Menu");
+    private void OnRestartClicked() => UnityEngine.SceneManagement.SceneManager.LoadScene(UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
 }

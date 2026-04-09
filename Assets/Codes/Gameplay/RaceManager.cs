@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Fusion;
 
 /// <summary>
-/// Quản lý trạng thái cuộc đua
+/// Quản lý trạng thái cuộc đua - ĐÃ SỬA hoàn toàn (không còn lỗi IsSpawned)
 /// </summary>
 public class RaceManager : NetworkBehaviour
 {
@@ -25,6 +25,8 @@ public class RaceManager : NetworkBehaviour
     public event System.Action<CarController> OnRaceEnd;
     public event System.Action<CarController, int> OnLapComplete;
 
+    private bool _isSpawned = false;   // ← FIX: cờ an toàn
+
     private void Awake()
     {
         if (Instance != null && Instance != this) { Destroy(gameObject); return; }
@@ -33,10 +35,11 @@ public class RaceManager : NetworkBehaviour
 
     public override void Spawned()
     {
+        _isSpawned = true;                    // ← Đánh dấu đã spawn
         RaceStarted = false;
         RaceFinished = false;
         RaceTimer = 0f;
-        Debug.Log("[RaceManager] Race initialized");
+        Debug.Log("[RaceManager] ✅ Race initialized & Spawned!");
     }
 
     public override void FixedUpdateNetwork()
@@ -49,9 +52,6 @@ public class RaceManager : NetworkBehaviour
         }
     }
 
-    /// <summary>
-    /// Start race
-    /// </summary>
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
     public void RPC_StartRace()
     {
@@ -62,9 +62,6 @@ public class RaceManager : NetworkBehaviour
         Debug.Log("[RaceManager] Race started!");
     }
 
-    /// <summary>
-    /// Xử lý hoàn thành lap
-    /// </summary>
     public void RegisterLapCompletion(CarController car)
     {
         if (!RaceStarted || RaceFinished) return;
@@ -84,16 +81,11 @@ public class RaceManager : NetworkBehaviour
         }
     }
 
-    /// <summary>
-    /// Kết thúc cuộc đua
-    /// </summary>
     private void FinishRace(CarController winner)
     {
         if (RaceFinished) return;
-
         RaceFinished = true;
         _winner = winner;
-        
         OnRaceEnd?.Invoke(winner);
         Debug.Log($"[RaceManager] {winner.name} won the race in {RaceTimer:F2}s!");
     }
@@ -103,6 +95,14 @@ public class RaceManager : NetworkBehaviour
         return _carLapCount.ContainsKey(car) ? _carLapCount[car] : 0;
     }
 
+    /// <summary>
+    /// Lấy thời gian an toàn (không crash trước khi Spawned)
+    /// </summary>
+    public float GetRaceTime()
+    {
+        if (!_isSpawned) return 0f;   // ← FIX: dùng cờ local
+        return RaceTimer;
+    }
+
     public CarController GetWinner() => _winner;
-    public float GetRaceTime() => RaceTimer;
 }
