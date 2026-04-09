@@ -45,7 +45,7 @@ public class CarController : NetworkBehaviour
         _rb.constraints = RigidbodyConstraints2D.FreezeRotation;
         _rb.linearDamping = 0f;
         _rb.angularDamping = 0f;
-        _rb.isKinematic = true; // Start as kinematic
+        // DO NOT set isKinematic here - let Spawned() decide
     }
 
     public override void Spawned()
@@ -61,17 +61,17 @@ public class CarController : NetworkBehaviour
         // ✅ QUAN TRỌNG: Set Rigidbody type dựa trên input authority
         if (HasInputAuthority)
         {
-            _rb.bodyType = RigidbodyType2D.Dynamic;
-            _rb.simulated = true;
+            Debug.Log($"[CarController] ✅ Spawned AUTHORITY - {gameObject.name}");
+            _rb.isKinematic = false;
+            _rb.gravityScale = 0f;
             _rb.linearVelocity = Vector2.zero;
-            Debug.Log($"[CarController] ✅ Spawned AUTHORITY - {gameObject.name} | RB=Dynamic");
         }
         else
         {
-            _rb.bodyType = RigidbodyType2D.Kinematic;
-            _rb.simulated = false;
+            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name}");
+            _rb.isKinematic = true;
+            _rb.gravityScale = 0f;
             _rb.linearVelocity = Vector2.zero;
-            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name} | RB=Kinematic");
         }
     }
 
