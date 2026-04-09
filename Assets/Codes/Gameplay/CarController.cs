@@ -58,7 +58,21 @@ public class CarController : NetworkBehaviour
         _currentRotation = transform.rotation.eulerAngles.z;
         NetworkRotation = _currentRotation;
 
-        Debug.Log($"[CarController] ✅ Spawned - {gameObject.name} | HasInputAuthority={HasInputAuthority} | Pos={transform.position}");
+        // ✅ QUAN TRỌNG: Set Rigidbody type dựa trên input authority
+        if (HasInputAuthority)
+        {
+            _rb.bodyType = RigidbodyType2D.Dynamic;
+            _rb.simulated = true;
+            _rb.linearVelocity = Vector2.zero;
+            Debug.Log($"[CarController] ✅ Spawned AUTHORITY - {gameObject.name} | RB=Dynamic");
+        }
+        else
+        {
+            _rb.bodyType = RigidbodyType2D.Kinematic;
+            _rb.simulated = false;
+            _rb.linearVelocity = Vector2.zero;
+            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name} | RB=Kinematic");
+        }
     }
 
     public override void FixedUpdateNetwork()
@@ -67,16 +81,14 @@ public class CarController : NetworkBehaviour
 
         if (HasInputAuthority)
         {
-            // ================== AUTHORITY PLAYER (Local) ==================
+            // ================== AUTHORITY PLAYER ==================
             if (GetInput(out NetworkInputData input))
             {
                 HandleMovement(input);
                 HandlePowerup(input);
             }
 
-            // Apply velocity to Rigidbody for physics
-            _rb.bodyType = RigidbodyType2D.Dynamic;
-            _rb.simulated = true;
+            // Apply velocity to Dynamic Rigidbody for physics simulation
             _rb.linearVelocity = _localVelocity;
 
             // Sync to network EVERY FRAME
@@ -90,11 +102,6 @@ public class CarController : NetworkBehaviour
         else
         {
             // ================== REMOTE PLAYER ==================
-            // Disable Rigidbody to prevent interference
-            _rb.bodyType = RigidbodyType2D.Kinematic;
-            _rb.simulated = false;
-            _rb.linearVelocity = Vector2.zero;
-
             // Apply synced position and rotation
             transform.position = NetworkPosition;
             transform.rotation = Quaternion.AngleAxis(NetworkRotation, Vector3.forward);
