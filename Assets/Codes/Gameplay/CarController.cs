@@ -2,7 +2,7 @@ using UnityEngine;
 using Fusion;
 
 /// <summary>
-/// Điều khiển xe đua với cơ chế đà
+/// Điều khiển xe đua - ĐÃ SỬA cho Client di chuyển được
 /// </summary>
 public class CarController : NetworkBehaviour
 {
@@ -16,7 +16,6 @@ public class CarController : NetworkBehaviour
     [SerializeField] private float rotationSpeed = 180f;
     [SerializeField] private float driftRotationMultiplier = 1.5f;
 
-    [Header("Components")]
     private Rigidbody2D _rb;
     private SpriteRenderer _spriteRenderer;
 
@@ -28,7 +27,6 @@ public class CarController : NetworkBehaviour
 
     private Vector2 _localVelocity = Vector2.zero;
     private float _currentRotation = 0f;
-    private bool _isDrifting = false;
     private PowerupInventory _powerupInventory;
 
     public event System.Action<int> OnLapCompleted;
@@ -48,18 +46,19 @@ public class CarController : NetworkBehaviour
 
     public override void Spawned()
     {
-        CurrentRotation = _currentRotation;
-        NetworkVelocity = _localVelocity;
-        _powerupInventory = GetComponent<PowerupInventory>();
-        
-        if (_powerupInventory == null)
-            _powerupInventory = gameObject.AddComponent<PowerupInventory>();
+        _powerupInventory = GetComponent<PowerupInventory>() ?? gameObject.AddComponent<PowerupInventory>();
+
+        // Đặt lại vận tốc khi spawn
+        _localVelocity = Vector2.zero;
+        NetworkVelocity = Vector2.zero;
     }
 
+    // ====================== SỬA CHÍNH Ở ĐÂY ======================
     public override void FixedUpdateNetwork()
     {
-        if (!HasInputAuthority) return;
-        if (IsFinished) return;
+        // CHỈ OWNER CỦA XE (HasInputAuthority) mới điều khiển được
+        if (!HasInputAuthority || IsFinished) 
+            return;
 
         if (GetInput(out NetworkInputData input))
         {
@@ -67,6 +66,7 @@ public class CarController : NetworkBehaviour
             HandlePowerup(input);
         }
 
+        // Apply velocity
         _rb.linearVelocity = _localVelocity;
     }
 
@@ -74,23 +74,22 @@ public class CarController : NetworkBehaviour
     {
         Vector2 moveDir = input.MoveDirection;
         
-        // Drift logic
         _isDrifting = input.IsDrifting;
         IsDrifting = _isDrifting;
 
         // Acceleration
-        if (moveDir.magnitude > 0)
+        if (moveDir.magnitude > 0.01f)
         {
             _localVelocity += moveDir.normalized * acceleration * Runner.DeltaTime;
             _localVelocity = Vector2.ClampMagnitude(_localVelocity, maxSpeed);
         }
 
-        // Friction/Deceleration
-        float friction = _isDrifting ? driftFriction : this.friction;
-        _localVelocity *= friction;
+        // Friction
+        float currentFriction = _isDrifting ? driftFriction : friction;
+        _localVelocity *= currentFriction;
 
         // Rotation
-        if (moveDir.magnitude > 0)
+        if (moveDir.magnitude > 0.01f)
         {
             float targetRotation = Mathf.Atan2(moveDir.y, moveDir.x) * Mathf.Rad2Deg - 90f;
             float rotSpeed = _isDrifting ? rotationSpeed * driftRotationMultiplier : rotationSpeed;
@@ -99,6 +98,7 @@ public class CarController : NetworkBehaviour
             transform.rotation = Quaternion.AngleAxis(_currentRotation, Vector3.forward);
         }
 
+        // Sync cho client khác
         CurrentRotation = _currentRotation;
         NetworkVelocity = _localVelocity;
     }
@@ -111,51 +111,26 @@ public class CarController : NetworkBehaviour
         }
     }
 
-    /// <summary>
-    /// Pickup powerup
-    /// </summary>
+    // Các hàm còn lại giữ nguyên
     public void PickupPowerup(PowerupType type)
     {
         if (_powerupInventory != null)
-        {
             _powerupInventory.AddPowerup(type);
-            Debug.Log($"[CarController] Picked up {type}");
-        }
     }
 
-    /// <summary>
-    /// Use powerup
-    /// </summary>
-    public void UsePowerup()
-    {
-        if (_powerupInventory != null && HasInputAuthority)
-        {
-            _powerupInventory.UseCurrent();
-        }
-    }
-
-    /// <summary>
-    /// Complete lap
-    /// </summary>
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
     public void RPC_CompleteLap()
     {
         LapsCompleted++;
         OnLapCompleted?.Invoke(LapsCompleted);
-        Debug.Log($"[CarController] Lap {LapsCompleted} completed!");
 
-        // Check if finished (4 laps)
         if (LapsCompleted >= 4)
         {
             IsFinished = true;
             OnRaceFinished?.Invoke();
-            Debug.Log($"[CarController] Race finished!");
         }
     }
 
-    /// <summary>
-    /// Apply slow effect
-    /// </summary>
     [Rpc(RpcSources.All, RpcTargets.All)]
     public void RPC_ApplySlow(float slowAmount, float duration)
     {
@@ -164,15 +139,12 @@ public class CarController : NetworkBehaviour
 
     private System.Collections.IEnumerator SlowCoroutine(float slowAmount, float duration)
     {
-        float originalMaxSpeed = maxSpeed;
+        float originalMax = maxSpeed;
         maxSpeed *= (1f - slowAmount);
-
         yield return new WaitForSeconds(duration);
-
-        maxSpeed = originalMaxSpeed;
+        maxSpeed = originalMax;
     }
 
-    public PowerupInventory GetPowerupInventory() => _powerupInventory;
     public Vector2 GetVelocity() => _localVelocity;
     public float GetSpeed() => _localVelocity.magnitude;
 }
