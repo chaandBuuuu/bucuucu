@@ -49,35 +49,56 @@ public class CarController : NetworkBehaviour
     {
         _powerupInventory = GetComponent<PowerupInventory>() ?? gameObject.AddComponent<PowerupInventory>();
 
-        // Remote car dùng Kinematic để tránh physics conflict
-        if (!HasInputAuthority)
-        {
-            _rb.bodyType = RigidbodyType2D.Kinematic;
-        }
-
         // Đặt lại vận tốc khi spawn
         _localVelocity = Vector2.zero;
         NetworkVelocity = Vector2.zero;
+        
+        Debug.Log($"[CarController] ✅ Spawned - Name={gameObject.name}, HasInputAuthority={HasInputAuthority}, Owner={Object.InputAuthority}, LocalPlayer={Runner.LocalPlayer}, RBType={_rb.bodyType}");
     }
 
     public override void FixedUpdateNetwork()
     {
-        if (HasInputAuthority && !IsFinished)
+        if (IsFinished) return;
+        
+        if (HasInputAuthority)
         {
-            // ================== OWNER (chỉ xe của mình) ==================
+            // ================== AUTHORITY PLAYER (Local Player) ==================
             if (GetInput(out NetworkInputData input))
             {
+                if (input.MoveDirection.magnitude > 0.01f)
+                    Debug.Log($"[CarController] AUTHORITY - Input: MoveDir={input.MoveDirection}");
+                
                 HandleMovement(input);
                 HandlePowerup(input);
             }
+            else
+            {
+                Debug.LogWarning($"[CarController] AUTHORITY - Failed GetInput for {gameObject.name}");
+            }
 
-            _rb.linearVelocity = _localVelocity;
+            // Apply movement directly via position (more reliable for local control)
+            transform.position += (Vector3)(_localVelocity * Runner.DeltaTime);
+            _rb.linearVelocity = Vector2.zero; // Disable Rigidbody movement
+            
+            // Sync to network
+            CurrentRotation = _currentRotation;
+            NetworkVelocity = _localVelocity;
+            
+            // DEBUG
+            if (Runner.Tick % 60 == 0)
+                Debug.Log($"[CarController] AUTHORITY {gameObject.name}: LocalVel={_localVelocity}, Pos={transform.position}");
         }
         else
         {
-            // ================== REMOTE (xe của người khác) ==================
-            _rb.linearVelocity = NetworkVelocity;
+            // ================== REMOTE PLAYER (Other Players) ==================
+            // Update position based on networked velocity
+            transform.position += (Vector3)(NetworkVelocity * Runner.DeltaTime);
             transform.rotation = Quaternion.AngleAxis(CurrentRotation, Vector3.forward);
+            _rb.linearVelocity = Vector2.zero; // Keep Rigidbody disabled for remote
+            
+            // DEBUG
+            if (Runner.Tick % 60 == 0)
+                Debug.Log($"[CarController] REMOTE {gameObject.name}: NetVel={NetworkVelocity}, NetRot={CurrentRotation}, Pos={transform.position}");
         }
     }
 
