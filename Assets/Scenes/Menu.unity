@@ -342,8 +342,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 47.16704, y: -24.13605}
-  m_SizeDelta: {x: 1839.4968, y: 784.2829}
+  m_AnchoredPosition: {x: 47.16704, y: -39.27951}
+  m_SizeDelta: {x: 1839.4968, y: 1026.5779}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &200698551
 MonoBehaviour:
@@ -429,7 +429,8 @@ MonoBehaviour:
   maxPlayers: 4
   autoConnect: 1
   lobbySceneIndex: 1
-  playerData: {fileID: 11400000, guid: c9353831a7e2eef4ebedcad02c6ed0b0, type: 2}
+  racingSceneIndex: 2
+  carPrefabList: {fileID: 0}
 --- !u!4 &282157503
 Transform:
   m_ObjectHideFlags: 0
