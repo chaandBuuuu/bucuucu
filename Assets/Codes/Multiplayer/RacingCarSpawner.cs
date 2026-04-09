@@ -22,24 +22,18 @@ public class RacingCarSpawner : FusionCallbacksBase
         _spawnedPlayers.Clear();
     }
 
-    private void Start()
+    private void Update()
     {
-        StartCoroutine(RegisterWhenReady());
-    }
+        if (_registered) return;
 
-    private System.Collections.IEnumerator RegisterWhenReady()
-    {
-        // Đợi FusionNetworkManager & Runner sẵn sàng
-        while (FusionNetworkManager.Instance?.Runner == null || !FusionNetworkManager.Instance.Runner.IsRunning)
-            yield return null;
+        var fm = FusionNetworkManager.Instance;
+        if (fm == null || fm.Runner == null || !fm.Runner.IsRunning) return;
 
-        if (_registered) yield break;
-
-        _runner = FusionNetworkManager.Instance.Runner;
+        _runner = fm.Runner;
         _runner.AddCallbacks(this);
         _registered = true;
 
-        Debug.Log("[RacingCarSpawner] ✅ Callback đã đăng ký - sẵn sàng spawn");
+        Debug.Log("[RacingCarSpawner] Đã đăng ký callback sau khi load scene");
 
         if (_runner.IsServer)
             StartCoroutine(SpawnAllPlayersDelayed());
@@ -79,6 +73,7 @@ public class RacingCarSpawner : FusionCallbacksBase
         if (_runner.TryGetPlayerObject(player, out _))
         {
             _spawnedPlayers.Add(player);
+            Debug.Log($"[RacingCarSpawner] Player {player} đã có object rồi");
             return;
         }
 
@@ -97,18 +92,21 @@ public class RacingCarSpawner : FusionCallbacksBase
             ? spawnPoints[idx].position 
             : new Vector3((idx - 1.5f) * 4f, -12f, 0);
 
+        Debug.Log($"[RacingCarSpawner] Spawning car for Player {player} (LocalPlayer={_runner.LocalPlayer}) with inputAuthority={player}");
+        
         NetworkObject carObj = _runner.Spawn(prefab, pos, Quaternion.identity, player);
         _runner.SetPlayerObject(player, carObj);
         _spawnedPlayers.Add(player);
+
+        Debug.Log($"[RacingCarSpawner] ✅ Spawn thành công {prefab.name} cho Player {player} tại vị trí {pos}, HasInputAuthority={carObj.HasInputAuthority}");
 
         // Gán camera cho local player
         if (_runner.LocalPlayer == player && Camera.main != null)
         {
             var follow = Camera.main.GetComponent<CameraFollow>() ?? Camera.main.gameObject.AddComponent<CameraFollow>();
             follow.SetTarget(carObj.transform);
+            Debug.Log($"[RacingCarSpawner] Camera assigned to Player {player}");
         }
-
-        Debug.Log($"[RacingCarSpawner] ✅ Spawn thành công {prefab.name} cho Player {player} tại vị trí {pos}");
     }
 
     private void OnDestroy()

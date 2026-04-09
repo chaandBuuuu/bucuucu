@@ -43,12 +43,11 @@ public class InputHandler : FusionCallbacksBase
 
     private System.Collections.IEnumerator RegisterWhenReady()
     {
-        // Đợi Runner sẵn sàng
-        while (FusionNetworkManager.Instance?.Runner == null || !FusionNetworkManager.Instance.Runner.IsRunning)
+        while (FusionNetworkManager.Instance?.Runner == null)
             yield return null;
 
         FusionNetworkManager.Instance.Runner.AddCallbacks(this);
-        Debug.Log("[InputHandler] ✅ Input handler đã đăng ký");
+        Debug.Log("[InputHandler] Input handler registered");
     }
 
     private void OnDestroy()
@@ -58,6 +57,8 @@ public class InputHandler : FusionCallbacksBase
 
     public override void OnInput(NetworkRunner runner, NetworkInput input)
     {
+        Debug.Log($"[InputHandler] OnInput called - MoveInput={_moveInput}, IsDrifting={_isDrifting}");
+        
         input.Set(new NetworkInputData
         {
             Direction = _moveInput,
@@ -69,7 +70,10 @@ public class InputHandler : FusionCallbacksBase
             PressR = _pressR,
             PressF = _pressF
         });
+        
+        // Reset one-time flags
         _isPausing = false;
+        _usePowerup = false;
     }
 }
 

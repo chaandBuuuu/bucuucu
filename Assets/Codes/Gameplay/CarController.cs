@@ -52,22 +52,44 @@ public class CarController : NetworkBehaviour
         // Đặt lại vận tốc khi spawn
         _localVelocity = Vector2.zero;
         NetworkVelocity = Vector2.zero;
+        
+        Debug.Log($"[CarController] Spawned - HasInputAuthority={HasInputAuthority}, Owner={Object.InputAuthority}");
     }
 
     public override void FixedUpdateNetwork()
     {
-        // CHỈ OWNER CỦA XE (HasInputAuthority) mới điều khiển được
-        if (!HasInputAuthority || IsFinished) 
-            return;
-
-        if (GetInput(out NetworkInputData input))
+        // Authority player: Read input and update movement
+        if (HasInputAuthority && !IsFinished)
         {
-            HandleMovement(input);
-            HandlePowerup(input);
+            if (GetInput(out NetworkInputData input))
+            {
+                // Debug input
+                if (input.MoveDirection.magnitude > 0)
+                    Debug.Log($"[CarController] Input received: MoveDir={input.MoveDirection}");
+                    
+                HandleMovement(input);
+                HandlePowerup(input);
+            }
+            else
+            {
+                Debug.LogWarning($"[CarController] Failed to get input for {gameObject.name}");
+            }
         }
 
-        // Apply velocity
-        _rb.linearVelocity = _localVelocity;
+        // ALL players (authority + remote): Apply velocity to Rigidbody
+        // For authority: use locally calculated velocity
+        // For remote: use networked velocity from authority player
+        if (!IsFinished)
+        {
+            Vector2 velocityToApply = HasInputAuthority ? _localVelocity : NetworkVelocity;
+            _rb.linearVelocity = velocityToApply;
+            
+            // Remote players also sync rotation from networked property
+            if (!HasInputAuthority)
+            {
+                transform.rotation = Quaternion.AngleAxis(CurrentRotation, Vector3.forward);
+            }
+        }
     }
 
     private void HandleMovement(NetworkInputData input)
