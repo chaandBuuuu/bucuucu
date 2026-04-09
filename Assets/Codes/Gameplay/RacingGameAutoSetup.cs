@@ -1,10 +1,12 @@
 using UnityEngine;
+using UnityEngine.UI;
 using Fusion;
 using TMPro;
+using System.Collections.Generic;
 
 /// <summary>
 /// Tự động thiết lập cảnh racing với tất cả các thành phần cần thiết
-/// Chỉ cần gắn script này vào một GameObject rỗng và chạy OnRuntimeSetup()
+/// Chỉ cần gắn script này vào một GameObject rỗng và chạy SetupRacingScene()
 /// </summary>
 public class RacingGameAutoSetup : MonoBehaviour
 {
@@ -44,17 +46,30 @@ public class RacingGameAutoSetup : MonoBehaviour
 
     private void CreateRaceManager()
     {
+        // Kiểm tra xem đã tồn tại chưa
+        RaceManager existing = FindAnyObjectByType<RaceManager>();
+        if (existing != null)
+        {
+            Debug.Log("⚠️ RaceManager đã tồn tại, bỏ qua");
+            return;
+        }
+
         GameObject raceManagerObj = new GameObject("RaceManager");
         RaceManager raceManager = raceManagerObj.AddComponent<RaceManager>();
-        
-        // Cấu hình RaceManager
-        raceManager.SetLapsToWin(4);
         
         Debug.Log("✅ Tạo RaceManager");
     }
 
     private void CreateFinishLine()
     {
+        // Kiểm tra xem đã tồn tại chưa
+        FinishLineDetector existing = FindAnyObjectByType<FinishLineDetector>();
+        if (existing != null)
+        {
+            Debug.Log("⚠️ FinishLine đã tồn tại, bỏ qua");
+            return;
+        }
+
         GameObject finishLineObj = new GameObject("FinishLine");
         finishLineObj.transform.position = new Vector3(0, 0, 0);
 
@@ -64,11 +79,15 @@ public class RacingGameAutoSetup : MonoBehaviour
 
         FinishLineDetector detector = finishLineObj.AddComponent<FinishLineDetector>();
         
-        // Tìm RaceManager
-        RaceManager raceManager = FindObjectOfType<RaceManager>();
+        // TÌm RaceManager
+        RaceManager raceManager = FindAnyObjectByType<RaceManager>();
         if (raceManager != null)
         {
-            detector.raceManager = raceManager;
+            // Dùng reflection vì property có thể private
+            var field = typeof(FinishLineDetector).GetField("raceManager", 
+                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+            if (field != null)
+                field.SetValue(detector, raceManager);
         }
 
         Debug.Log("✅ Tạo FinishLine");
@@ -76,6 +95,13 @@ public class RacingGameAutoSetup : MonoBehaviour
 
     private void CreateSpawnPoints()
     {
+        // Kiểm tra xem đã tồn tại chưa
+        if (GameObject.Find("SpawnPoints") != null)
+        {
+            Debug.Log("⚠️ SpawnPoints đã tồn tại, bỏ qua");
+            return;
+        }
+
         GameObject spawnPointsContainer = new GameObject("SpawnPoints");
 
         Vector3[] spawnPositions = new Vector3[]
@@ -101,6 +127,13 @@ public class RacingGameAutoSetup : MonoBehaviour
 
     private void CreatePowerupItems()
     {
+        // Kiểm tra xem đã tồn tại chưa
+        if (GameObject.Find("Powerups") != null)
+        {
+            Debug.Log("⚠️ Powerups đã tồn tại, bỏ qua");
+            return;
+        }
+
         GameObject powerupsContainer = new GameObject("Powerups");
 
         // Vị trí ngẫu nhiên 4 powerup trên track
@@ -143,6 +176,13 @@ public class RacingGameAutoSetup : MonoBehaviour
 
     private void CreateRaceUICanvas()
     {
+        // Kiểm tra xem đã tồn tại chưa
+        if (GameObject.Find("RaceUICanvas") != null)
+        {
+            Debug.Log("⚠️ RaceUICanvas đã tồn tại, bỏ qua");
+            return;
+        }
+
         GameObject canvasObj = new GameObject("RaceUICanvas");
         Canvas canvas = canvasObj.AddComponent<Canvas>();
         canvas.renderMode = RenderMode.ScreenSpaceOverlay;
@@ -176,7 +216,7 @@ public class RacingGameAutoSetup : MonoBehaviour
         TextMeshProUGUI timerText = timerObj.AddComponent<TextMeshProUGUI>();
         timerText.text = "Thời gian: 0:00";
         timerText.fontSize = 36;
-        timerText.alignment = TextAlignmentOptions.TopCenter;
+        timerText.alignment = TextAlignmentOptions.Center;
         timerText.color = Color.white;
 
         Debug.Log("✅ Tạo RaceUI Canvas");
@@ -192,11 +232,5 @@ public class RacingGameAutoSetup : MonoBehaviour
             PowerupType.Trap => Color.magenta,
             _ => Color.white
         };
-    }
-
-    // Gọi từ menu hoặc button
-    public void OnSetupButtonClicked()
-    {
-        SetupRacingScene();
     }
 }
