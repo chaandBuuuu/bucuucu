@@ -2,7 +2,7 @@ using UnityEngine;
 using Fusion;
 
 /// <summary>
-/// Điều khiển xe đua - ĐÃ SỬA cho Client di chuyển được
+/// Điều khiển xe đua - ĐÃ SỬA cho Client di chuyển được (Remote cars sync)
 /// </summary>
 public class CarController : NetworkBehaviour
 {
@@ -21,13 +21,13 @@ public class CarController : NetworkBehaviour
 
     [Networked] private Vector2 NetworkVelocity { get; set; }
     [Networked] private float CurrentRotation { get; set; }
-    [Networked] private Vector3 NetworkPosition { get; set; }
     [Networked] public bool IsDrifting { get; private set; }
     [Networked] public int LapsCompleted { get; set; }
     [Networked] public bool IsFinished { get; set; }
 
     private Vector2 _localVelocity = Vector2.zero;
     private float _currentRotation = 0f;
+    private bool _isDrifting = false;
     private PowerupInventory _powerupInventory;
 
     public event System.Action<int> OnLapCompleted;
@@ -49,53 +49,35 @@ public class CarController : NetworkBehaviour
     {
         _powerupInventory = GetComponent<PowerupInventory>() ?? gameObject.AddComponent<PowerupInventory>();
 
+        // Remote car dùng Kinematic để tránh physics conflict
+        if (!HasInputAuthority)
+        {
+            _rb.bodyType = RigidbodyType2D.Kinematic;
+        }
+
         // Đặt lại vận tốc khi spawn
         _localVelocity = Vector2.zero;
         NetworkVelocity = Vector2.zero;
-        NetworkPosition = transform.position;
-        
-        Debug.Log($"[CarController] Spawned - HasInputAuthority={HasInputAuthority}, Owner={Object.InputAuthority}, Pos={transform.position}");
     }
 
-    // ====================== SỬA CHÍNH Ở ĐÂY ======================
     public override void FixedUpdateNetwork()
     {
-        // Authority player: Read input and update movement
         if (HasInputAuthority && !IsFinished)
         {
+            // ================== OWNER (chỉ xe của mình) ==================
             if (GetInput(out NetworkInputData input))
             {
-                // Debug input
-                if (input.MoveDirection.magnitude > 0)
-                {
-                    Debug.Log($"[CarController] AUTHORITY - Input received: MoveDir={input.MoveDirection}");
-                }
-                    
                 HandleMovement(input);
                 HandlePowerup(input);
             }
-            else
-            {
-                Debug.LogWarning($"[CarController] AUTHORITY - Failed to get input for {gameObject.name}");
-            }
-            
-            // Authority: Update position based on velocity
-            Vector3 newPos = transform.position + (Vector3)_localVelocity * Runner.DeltaTime;
-            transform.position = newPos;
-            
-            // Sync position & velocity to network
-            NetworkPosition = transform.position;
-            NetworkVelocity = _localVelocity;
-            CurrentRotation = _currentRotation;
+
+            _rb.linearVelocity = _localVelocity;
         }
-        else if (!IsFinished)
+        else
         {
-            // Remote player: Apply networked position and velocity
-            Vector3 newPos = (Vector3)NetworkVelocity * Runner.DeltaTime;
-            transform.position += newPos;
+            // ================== REMOTE (xe của người khác) ==================
+            _rb.linearVelocity = NetworkVelocity;
             transform.rotation = Quaternion.AngleAxis(CurrentRotation, Vector3.forward);
-            
-            Debug.Log($"[CarController] REMOTE - {gameObject.name}: Pos={transform.position}, Vel={NetworkVelocity}");
         }
     }
 
@@ -126,6 +108,10 @@ public class CarController : NetworkBehaviour
             _currentRotation = Mathf.LerpAngle(_currentRotation, targetRotation, rotSpeed * Runner.DeltaTime);
             transform.rotation = Quaternion.AngleAxis(_currentRotation, Vector3.forward);
         }
+
+        // Sync cho client khác
+        CurrentRotation = _currentRotation;
+        NetworkVelocity = _localVelocity;
     }
 
     private void HandlePowerup(NetworkInputData input)
@@ -136,11 +122,15 @@ public class CarController : NetworkBehaviour
         }
     }
 
-    // Các hàm còn lại giữ nguyên
     public void PickupPowerup(PowerupType type)
     {
         if (_powerupInventory != null)
             _powerupInventory.AddPowerup(type);
+    }
+
+    public PowerupInventory GetPowerupInventory()
+    {
+        return _powerupInventory;
     }
 
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
