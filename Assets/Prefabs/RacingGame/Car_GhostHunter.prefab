@@ -14,6 +14,7 @@ GameObject:
   - component: {fileID: 7243190846666257497}
   - component: {fileID: 6782008114638363689}
   - component: {fileID: 6578701233293332262}
+  - component: {fileID: 4060827351862739069}
   m_Layer: 0
   m_Name: Car_GhostHunter
   m_TagString: Player
@@ -54,6 +55,7 @@ MonoBehaviour:
   NestedObjects: []
   NetworkedBehaviours:
   - {fileID: 2091246644661242265}
+  - {fileID: 4060827351862739069}
   ForceRemoteRenderTimeframe: 0
 --- !u!114 &2091246644661242265
 MonoBehaviour:
@@ -209,3 +211,20 @@ SpriteRenderer:
   m_WasSpriteAssigned: 1
   m_SpriteSortPoint: 0
   m_BlendShapeWeights: []
+--- !u!114 &4060827351862739069
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 309226549048650622}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 158639473, guid: e725a070cec140c4caffb81624c8c787, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkTransform
+  _stateAuthorityChangeErrorCorrectionDelta: 0
+  SyncScale: 0
+  SyncParent: 0
+  _autoAOIOverride: 1
+  DisableSharedModeInterpolation: 0
