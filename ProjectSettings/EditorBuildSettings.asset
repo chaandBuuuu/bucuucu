@@ -9,7 +9,7 @@ EditorBuildSettings:
     path: Assets/Scenes/Menu.unity
     guid: 26e2b57ee7d1d534d873ccb6310d9877
   - enabled: 1
-    path: Assets/Scenes/Lobby.unity
+    path: Assets/Scenes/lobby.unity
     guid: 293856a14caf52a45b1b205568b37b60
   - enabled: 1
     path: Assets/Scenes/dakitchenda.unity

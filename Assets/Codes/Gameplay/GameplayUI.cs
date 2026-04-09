@@ -219,52 +219,162 @@ public class GameplayUIManager : NetworkBehaviour
 }
 
 /// <summary>
-/// Hiển thị kết quả game
+/// Hiển thị kết quả game với animation và thống kê
 /// </summary>
 public class GameEndUIManager : MonoBehaviour
 {
-    [SerializeField] private GameObject gameEndPanel;
+    [Header("Core UI Elements")]
+    [SerializeField] private Canvas gameEndCanvas;
+    [SerializeField] private CanvasGroup canvasGroup;
     [SerializeField] private TextMeshProUGUI resultText;
+    [SerializeField] private TextMeshProUGUI winnerText;
+
+    [Header("Stats Display")]
+    [SerializeField] private TextMeshProUGUI gameDurationText;
+    [SerializeField] private TextMeshProUGUI hunterStatsText;
+    [SerializeField] private TextMeshProUGUI survivorStatsText;
+
+    [Header("Buttons")]
+    [SerializeField] private Button backToLobbyButton;
+    [SerializeField] private Button mainMenuButton;
     [SerializeField] private Button restartButton;
 
-    private void Start()
+    [Header("Settings")]
+    [SerializeField] private float fadeInDuration = 0.5f;
+
+    private bool _isGameEnded = false;
+
+    private void OnEnable()
     {
         var gameManager = GameplayStateManager.Instance;
         if (gameManager != null)
         {
             gameManager.OnGameEnd += OnGameEnd;
         }
-
-        restartButton.onClick.AddListener(RestartGame);
-        gameEndPanel.SetActive(false);
     }
 
-    private void OnGameEnd(GameWinner winner)
-    {
-        gameEndPanel.SetActive(true);
-
-        if (winner == GameWinner.Hunter)
-        {
-            resultText.text = "HUNTER WINS!\nAll survivors eliminated!";
-        }
-        else if (winner == GameWinner.Survivors)
-        {
-            resultText.text = "SURVIVORS WIN!\nEscaped successfully!";
-        }
-    }
-
-    private void RestartGame()
-    {
-        // Reload scene or return to lobby
-        UnityEngine.SceneManagement.SceneManager.LoadScene("Lobby");
-    }
-
-    private void OnDestroy()
+    private void OnDisable()
     {
         var gameManager = GameplayStateManager.Instance;
         if (gameManager != null)
         {
             gameManager.OnGameEnd -= OnGameEnd;
         }
+    }
+
+    private void Start()
+    {
+        if (canvasGroup == null)
+            canvasGroup = GetComponent<CanvasGroup>();
+
+        if (canvasGroup != null)
+            canvasGroup.alpha = 0f;
+
+        if (gameEndCanvas != null)
+            gameEndCanvas.enabled = false;
+
+        // Setup button listeners
+        if (backToLobbyButton != null)
+            backToLobbyButton.onClick.AddListener(OnBackToLobbyClicked);
+        if (mainMenuButton != null)
+            mainMenuButton.onClick.AddListener(OnMainMenuClicked);
+        if (restartButton != null)
+            restartButton.onClick.AddListener(OnRestartClicked);
+    }
+
+    private void OnGameEnd(GameWinner winner)
+    {
+        if (_isGameEnded) return;
+        _isGameEnded = true;
+
+        StartCoroutine(ShowGameEndUI(winner));
+    }
+
+    private System.Collections.IEnumerator ShowGameEndUI(GameWinner winner)
+    {
+        yield return new WaitForSeconds(1f);
+
+        if (gameEndCanvas != null)
+            gameEndCanvas.enabled = true;
+
+        // Fade in animation
+        if (canvasGroup != null)
+        {
+            float elapsedTime = 0f;
+            while (elapsedTime < fadeInDuration)
+            {
+                elapsedTime += Time.deltaTime;
+                canvasGroup.alpha = Mathf.Clamp01(elapsedTime / fadeInDuration);
+                yield return null;
+            }
+            canvasGroup.alpha = 1f;
+        }
+
+        DisplayGameResults(winner);
+    }
+
+    private void DisplayGameResults(GameWinner winner)
+    {
+        var gameManager = GameplayStateManager.Instance;
+        if (gameManager == null) return;
+
+        // Display result text
+        string resultMessage = winner == GameWinner.Hunter ? "HUNTERS WIN!" : "SURVIVORS WIN!";
+        if (resultText != null)
+        {
+            resultText.text = resultMessage;
+            resultText.color = winner == GameWinner.Hunter ? Color.red : Color.green;
+        }
+
+        // Display winner name
+        if (winnerText != null)
+        {
+            winnerText.text = winner == GameWinner.Hunter ? "🔥 HUNTERS VICTORY 🔥" : "🌲 SURVIVORS ESCAPE 🌲";
+        }
+
+        // Display game duration
+        if (gameDurationText != null)
+        {
+            float duration = gameManager.GameTimer;
+            int minutes = (int)(duration / 60f);
+            int seconds = (int)(duration % 60f);
+            gameDurationText.text = $"Game Duration: {minutes}m {seconds}s";
+        }
+
+        // Display stats
+        if (hunterStatsText != null)
+        {
+            hunterStatsText.text = "🔥 HUNTER STATS\n━━━━━━━━━\nDamage Dealt: 0\nKills: 0";
+        }
+
+        if (survivorStatsText != null)
+        {
+            survivorStatsText.text = "🌲 SURVIVOR STATS\n━━━━━━━━━\nWood Collected: 0\nBonfires Lit: 0";
+        }
+
+        Debug.Log($"[GameEndUIManager] Game ended with winner: {winner}");
+    }
+
+    private void OnBackToLobbyClicked()
+    {
+        Time.timeScale = 1f;
+        Debug.Log("[GameEndUIManager] Back to lobby clicked");
+        UnityEngine.SceneManagement.SceneManager.LoadScene("1_Lobby");
+    }
+
+    private void OnMainMenuClicked()
+    {
+        Time.timeScale = 1f;
+        Debug.Log("[GameEndUIManager] Main menu clicked");
+        UnityEngine.SceneManagement.SceneManager.LoadScene("0_MainMenu");
+    }
+
+    private void OnRestartClicked()
+    {
+        Time.timeScale = 1f;
+        Debug.Log("[GameEndUIManager] Restart clicked");
+        UnityEngine.SceneManagement.SceneManager.LoadScene(
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
+        );
     }
 }
