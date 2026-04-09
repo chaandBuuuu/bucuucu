@@ -171,6 +171,7 @@ MonoBehaviour:
   requiredPlayers: 2
   checkInterval: 1
   statusText: {fileID: 0}
+  startRaceButton: {fileID: 0}
 --- !u!4 &137869851
 Transform:
   m_ObjectHideFlags: 0
@@ -6268,11 +6269,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1127738846 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 3304211658898301382, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
-  m_PrefabInstance: {fileID: 1675930674}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1264415197
 GameObject:
   m_ObjectHideFlags: 0
@@ -6302,15 +6298,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 404f40251686bd04db17c207811ff38e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LobbyCharacterSelectUI
-  characterButtons:
+  carButtons:
   - {fileID: 1675930680}
   - {fileID: 1675930679}
   - {fileID: 1675930678}
   - {fileID: 1675930677}
-  selectedCharacterText: {fileID: 1675930676}
-  startButtonObj: {fileID: 314494083}
+  selectedCarText: {fileID: 1675930676}
+  readyButton: {fileID: 314494085}
   statusText: {fileID: 2117931969}
-  canvasToHide: {fileID: 1127738846}
 --- !u!4 &1264415199
 Transform:
   m_ObjectHideFlags: 0
