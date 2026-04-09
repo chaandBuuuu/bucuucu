@@ -28,7 +28,6 @@ public class CarController : NetworkBehaviour
 
     private Vector2 _localVelocity = Vector2.zero;
     private float _currentRotation = 0f;
-    private bool _isDrifting = false;           // ← ĐÃ THÊM
     private PowerupInventory _powerupInventory;
 
     public event System.Action<int> OnLapCompleted;
@@ -58,6 +57,7 @@ public class CarController : NetworkBehaviour
         Debug.Log($"[CarController] Spawned - HasInputAuthority={HasInputAuthority}, Owner={Object.InputAuthority}, Pos={transform.position}");
     }
 
+    // ====================== SỬA CHÍNH Ở ĐÂY ======================
     public override void FixedUpdateNetwork()
     {
         // Authority player: Read input and update movement
@@ -136,16 +136,11 @@ public class CarController : NetworkBehaviour
         }
     }
 
+    // Các hàm còn lại giữ nguyên
     public void PickupPowerup(PowerupType type)
     {
         if (_powerupInventory != null)
             _powerupInventory.AddPowerup(type);
-    }
-
-    // ====================== METHOD MỚI ĐÃ THÊM ======================
-    public PowerupInventory GetPowerupInventory()
-    {
-        return _powerupInventory;
     }
 
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
