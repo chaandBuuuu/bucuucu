@@ -21,6 +21,7 @@ public class CarController : NetworkBehaviour
 
     [Networked] private Vector2 NetworkVelocity { get; set; }
     [Networked] private float CurrentRotation { get; set; }
+    [Networked] private Vector3 NetworkPosition { get; set; }
     [Networked] public bool IsDrifting { get; private set; }
     [Networked] public int LapsCompleted { get; set; }
     [Networked] public bool IsFinished { get; set; }
@@ -52,8 +53,9 @@ public class CarController : NetworkBehaviour
         // Đặt lại vận tốc khi spawn
         _localVelocity = Vector2.zero;
         NetworkVelocity = Vector2.zero;
+        NetworkPosition = transform.position;
         
-        Debug.Log($"[CarController] Spawned - HasInputAuthority={HasInputAuthority}, Owner={Object.InputAuthority}");
+        Debug.Log($"[CarController] Spawned - HasInputAuthority={HasInputAuthority}, Owner={Object.InputAuthority}, Pos={transform.position}");
     }
 
     public override void FixedUpdateNetwork()
@@ -65,30 +67,35 @@ public class CarController : NetworkBehaviour
             {
                 // Debug input
                 if (input.MoveDirection.magnitude > 0)
-                    Debug.Log($"[CarController] Input received: MoveDir={input.MoveDirection}");
+                {
+                    Debug.Log($"[CarController] AUTHORITY - Input received: MoveDir={input.MoveDirection}");
+                }
                     
                 HandleMovement(input);
                 HandlePowerup(input);
             }
             else
             {
-                Debug.LogWarning($"[CarController] Failed to get input for {gameObject.name}");
+                Debug.LogWarning($"[CarController] AUTHORITY - Failed to get input for {gameObject.name}");
             }
-        }
-
-        // ALL players (authority + remote): Apply velocity to Rigidbody
-        // For authority: use locally calculated velocity
-        // For remote: use networked velocity from authority player
-        if (!IsFinished)
-        {
-            Vector2 velocityToApply = HasInputAuthority ? _localVelocity : NetworkVelocity;
-            _rb.linearVelocity = velocityToApply;
             
-            // Remote players also sync rotation from networked property
-            if (!HasInputAuthority)
-            {
-                transform.rotation = Quaternion.AngleAxis(CurrentRotation, Vector3.forward);
-            }
+            // Authority: Update position based on velocity
+            Vector3 newPos = transform.position + (Vector3)_localVelocity * Runner.DeltaTime;
+            transform.position = newPos;
+            
+            // Sync position & velocity to network
+            NetworkPosition = transform.position;
+            NetworkVelocity = _localVelocity;
+            CurrentRotation = _currentRotation;
+        }
+        else if (!IsFinished)
+        {
+            // Remote player: Apply networked position and velocity
+            Vector3 newPos = (Vector3)NetworkVelocity * Runner.DeltaTime;
+            transform.position += newPos;
+            transform.rotation = Quaternion.AngleAxis(CurrentRotation, Vector3.forward);
+            
+            Debug.Log($"[CarController] REMOTE - {gameObject.name}: Pos={transform.position}, Vel={NetworkVelocity}");
         }
     }
 
@@ -96,7 +103,7 @@ public class CarController : NetworkBehaviour
     {
         Vector2 moveDir = input.MoveDirection;
         
-        _isDrifting = input.IsDrifting;          // ← SỬ DỤNG BIẾN ĐÃ KHAI BÁO
+        _isDrifting = input.IsDrifting;
         IsDrifting = _isDrifting;
 
         // Acceleration
@@ -119,10 +126,6 @@ public class CarController : NetworkBehaviour
             _currentRotation = Mathf.LerpAngle(_currentRotation, targetRotation, rotSpeed * Runner.DeltaTime);
             transform.rotation = Quaternion.AngleAxis(_currentRotation, Vector3.forward);
         }
-
-        // Sync cho client khác
-        CurrentRotation = _currentRotation;
-        NetworkVelocity = _localVelocity;
     }
 
     private void HandlePowerup(NetworkInputData input)
