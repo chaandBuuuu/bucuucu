@@ -12,7 +12,7 @@ EditorBuildSettings:
     path: Assets/Scenes/Lobby.unity
     guid: 293856a14caf52a45b1b205568b37b60
   - enabled: 1
-    path: Assets/Scenes/dakitchenda.unity
-    guid: 5674a6ec446e38445ad07a1a23f6c078
+    path: Assets/Scenes/GamePlay.unity
+    guid: 1367e48a34ea2b24da3de5c3c06e6736
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}

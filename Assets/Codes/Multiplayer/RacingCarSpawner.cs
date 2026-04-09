@@ -1,23 +1,13 @@
 using UnityEngine;
 using Fusion;
-using Fusion.Sockets;
 using System.Collections;
 using System.Collections.Generic;
 
-/// <summary>
-/// Spawn cars cho racing game
-/// </summary>
 public class RacingCarSpawner : FusionCallbacksBase
 {
     [Header("Car Spawn Settings")]
-    [SerializeField] private NetworkObject carPrefab;
-    [SerializeField] private Vector3[] spawnPoints = new Vector3[4]
-    {
-        new Vector3(0, -5, 0),
-        new Vector3(5, -5, 0),
-        new Vector3(-5, -5, 0),
-        new Vector3(0, 5, 0)
-    };
+    [SerializeField] private CarPrefabList carPrefabList;   // ← Kéo asset CarPrefabList vào
+    [SerializeField] private Transform[] spawnPoints = new Transform[4];
 
     private NetworkRunner _runner;
     private bool _isRegistered = false;
@@ -25,8 +15,7 @@ public class RacingCarSpawner : FusionCallbacksBase
 
     private void Update()
     {
-        if (!_isRegistered)
-            TryRegister();
+        if (!_isRegistered) TryRegister();
     }
 
     private void TryRegister()
@@ -37,7 +26,6 @@ public class RacingCarSpawner : FusionCallbacksBase
         _runner = runner;
         _runner.AddCallbacks(this);
         _isRegistered = true;
-        Debug.Log($"[RacingCarSpawner] Registered | IsServer={runner.IsServer}");
 
         if (_runner.IsServer)
             StartCoroutine(SpawnAllDelayed());
@@ -50,15 +38,10 @@ public class RacingCarSpawner : FusionCallbacksBase
             SpawnCar(_runner, player);
     }
 
-    private void OnDestroy()
-    {
-        if (_runner != null)
-            _runner.RemoveCallbacks(this);
-    }
+    private void OnDestroy() => _runner?.RemoveCallbacks(this);
 
     public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
-        Debug.Log($"[RacingCarSpawner] OnPlayerJoined: {player}");
         if (!runner.IsServer) return;
         StartCoroutine(SpawnCarDelayed(runner, player));
     }
@@ -69,40 +52,29 @@ public class RacingCarSpawner : FusionCallbacksBase
         SpawnCar(runner, player);
     }
 
-    public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
-    {
-        _spawnedPlayers.Remove(player);
-        if (!runner.IsServer) return;
-        if (runner.TryGetPlayerObject(player, out NetworkObject obj))
-            runner.Despawn(obj);
-    }
-
     private void SpawnCar(NetworkRunner runner, PlayerRef player)
     {
         if (_spawnedPlayers.Contains(player)) return;
-        if (runner.TryGetPlayerObject(player, out _))
+        if (runner.TryGetPlayerObject(player, out _)) return;
+
+        // LẤY XE MÀ PLAYER ĐÃ CHỌN
+        int carIndex = FusionNetworkManager.Instance.GetPlayerCarChoice(player);
+        NetworkObject prefab = carPrefabList != null && carPrefabList.carPrefabs.Length > carIndex
+            ? carPrefabList.carPrefabs[carIndex]
+            : null;
+
+        if (prefab == null)
         {
-            _spawnedPlayers.Add(player);
+            Debug.LogError($"[RacingCarSpawner] Không tìm thấy prefab xe index {carIndex}");
             return;
         }
 
-        Vector3 pos = GetSpawnPoint(player);
+        int idx = (player.PlayerId - 1) % spawnPoints.Length;
+        Vector3 pos = spawnPoints[idx] != null ? spawnPoints[idx].position : Vector3.zero;
 
-        NetworkObject carObj = runner.Spawn(
-            carPrefab,
-            pos,
-            Quaternion.identity,
-            inputAuthority: player
-        );
+        var obj = runner.Spawn(prefab, pos, Quaternion.identity, player);
+        runner.SetPlayerObject(player, obj);
 
-        runner.SetPlayerObject(player, carObj);
-        _spawnedPlayers.Add(player);
-        Debug.Log($"[RacingCarSpawner] ✅ Spawned car for {player} at {pos}");
-    }
-
-    private Vector3 GetSpawnPoint(PlayerRef player)
-    {
-        int index = player.PlayerId % spawnPoints.Length;
-        return spawnPoints[index];
+        Debug.Log($"[RacingCarSpawner] ✅ Spawned {prefab.name} cho Player {player}");
     }
 }

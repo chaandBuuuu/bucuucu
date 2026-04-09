@@ -1,0 +1,19 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 38c7a3c882e3e96418b80a67936a889c, type: 3}
+  m_Name: CarPrefabList
+  m_EditorClassIdentifier: Assembly-CSharp::CarPrefabList
+  carPrefabs:
+  - {fileID: 5585903017180965895, guid: ca46ba25c1c4b574bb375924ed203d9a, type: 3}
+  - {fileID: 2082073674398481344, guid: eaa10d8ceabde4a4c89cc8cd6f7cbc85, type: 3}
+  - {fileID: 2697498092328580287, guid: 7047a111f744cdd48bf25ffd38df0b14, type: 3}
+  - {fileID: 6045922066386572556, guid: beda0cc34df57124c8d8eaa2c861c9a5, type: 3}

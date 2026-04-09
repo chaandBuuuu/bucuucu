@@ -4,6 +4,7 @@ using Fusion;
 using Fusion.Sockets;
 using System;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 
 public partial class FusionNetworkManager : FusionCallbacksBase
 {
@@ -11,35 +12,78 @@ public partial class FusionNetworkManager : FusionCallbacksBase
 
     [Header("Settings")]
     [SerializeField] private NetworkRunner runnerPrefab;
-    [SerializeField] private int           maxPlayers  = 4;
-    [SerializeField] private bool          autoConnect = true;
+    [SerializeField] private int maxPlayers = 4;
+    [SerializeField] private bool autoConnect = true;
 
     [Header("Scene Index")]
     [SerializeField] private int lobbySceneIndex = 1;
+    [SerializeField] private int racingSceneIndex = 2;
 
-    [Header("References")]
-    [SerializeField] private PlayerData playerData;
+    [Header("Racing - Car Selection")]
+    [SerializeField] public CarPrefabList carPrefabList;
+
+    // Lưu tên người chơi
+    private readonly Dictionary<PlayerRef, string> _playerNames = new Dictionary<PlayerRef, string>();
+
+    // Lưu lựa chọn xe
+    private readonly Dictionary<PlayerRef, int> _playerCarChoices = new Dictionary<PlayerRef, int>();
 
     public NetworkRunner Runner { get; private set; }
 
-    public event Action         OnConnectedEvent;
+    public event Action OnConnectedEvent;
     public event Action<string> OnDisconnectedEvent;
-    public event Action         OnJoinedSessionEvent;
+    public event Action OnJoinedSessionEvent;
     public event Action<string> OnJoinFailedEvent;
 
     private void Awake()
     {
-        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        if (Instance != null && Instance != this) 
+        { 
+            Destroy(gameObject); 
+            return; 
+        }
         Instance = this;
         DontDestroyOnLoad(gameObject);
     }
 
-    private void Start()
+    // ================== PLAYER NAME ==================
+    public void SetPlayerName(string name)
     {
-        if (autoConnect)
-            Debug.Log("[FusionNetworkManager] Sẵn sàng. Gọi CreateSession() hoặc JoinSession().");
+        if (Runner == null || !Runner.IsRunning)
+        {
+            Debug.LogWarning("[FusionNetworkManager] Chưa kết nối, không thể lưu tên.");
+            return;
+        }
+
+        PlayerRef localPlayer = Runner.LocalPlayer;
+        _playerNames[localPlayer] = name;
+        Debug.Log($"[FusionNetworkManager] Đã đặt tên: {name} cho Player {localPlayer}");
     }
 
+    public string GetPlayerName(PlayerRef player)
+    {
+        return _playerNames.TryGetValue(player, out string name) ? name : $"Player {player.PlayerId}";
+    }
+
+    // ================== CAR CHOICE ==================
+    public void RegisterPlayerCarChoice(PlayerRef player, int carIndex)
+    {
+        _playerCarChoices[player] = carIndex;
+        Debug.Log($"[FusionNetworkManager] Player {player} chọn xe index {carIndex}");
+    }
+
+    public int GetPlayerCarChoice(PlayerRef player)
+    {
+        return _playerCarChoices.TryGetValue(player, out int index) ? index : 0;
+    }
+
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    public void RPC_RegisterCarChoice(PlayerRef player, int carIndex)
+    {
+        RegisterPlayerCarChoice(player, carIndex);
+    }
+
+    // ================== SESSION ==================
     public async Task CreateSession(string sessionName)
     {
         await StartRunner(GameMode.Host, sessionName);
@@ -60,98 +104,46 @@ public partial class FusionNetworkManager : FusionCallbacksBase
 
         var args = new StartGameArgs
         {
-            GameMode     = mode,
-            SessionName  = sessionName,
-            PlayerCount  = maxPlayers,
-            // Region được cài trong PhotonAppSettings asset (xem hướng dẫn bên dưới)
-            SceneManager = Runner.GetComponent<NetworkSceneManagerDefault>()
+            GameMode = mode,
+            SessionName = sessionName,
+            PlayerCount = maxPlayers,
+            SceneManager = Runner.GetComponent<NetworkSceneManagerDefault>() 
                         ?? Runner.gameObject.AddComponent<NetworkSceneManagerDefault>()
         };
-
-        Debug.Log($"[FusionNetworkManager] Bắt đầu {mode}: {sessionName}");
 
         var result = await Runner.StartGame(args);
 
         if (!result.Ok)
         {
-            Debug.LogError($"[FusionNetworkManager] Thất bại: {result.ShutdownReason}");
+            Debug.LogError($"Start game failed: {result.ShutdownReason}");
             OnJoinFailedEvent?.Invoke(result.ShutdownReason.ToString());
         }
         else
         {
-            Debug.Log("[FusionNetworkManager] Thành công! Đang load Lobby...");
             OnJoinedSessionEvent?.Invoke();
-
             if (Runner.IsServer)
             {
-                Debug.Log($"[FusionNetworkManager] Host load scene index: {lobbySceneIndex}");
                 Runner.LoadScene(SceneRef.FromIndex(lobbySceneIndex));
-            }
-            else
-            {
-                Debug.Log("[FusionNetworkManager] Client chờ Host load scene...");
             }
         }
     }
 
     public void LeaveSession()
     {
-        if (Runner != null) { Runner.Shutdown(); Runner = null; }
+        if (Runner != null) Runner.Shutdown();
     }
 
-    public void SetPlayerName(string name)
-    {
-        if (playerData != null) playerData.playerName = name;
-    }
+    // ================== CALLBACKS ==================
+    public override void OnConnectedToServer(NetworkRunner runner) => OnConnectedEvent?.Invoke();
+    public override void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) 
+        => OnDisconnectedEvent?.Invoke(reason.ToString());
 
-    public void SetSelectedCharacter(int index)
-    {
-        if (playerData != null)
-        {
-            playerData.characterIndex = index;
-            playerData.isReady        = true;
-        }
-        Debug.Log($"[FusionNetworkManager] Chọn nhân vật: {index}");
-    }
+    public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player) 
+        => Debug.Log($"Player joined: {player}");
 
-    public override void OnConnectedToServer(NetworkRunner runner)
-    {
-        Debug.Log("[FusionNetworkManager] Đã kết nối");
-        OnConnectedEvent?.Invoke();
-    }
+    public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player) 
+        => Debug.Log($"Player left: {player}");
 
-    public override void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason)
-    {
-        Debug.LogWarning($"[FusionNetworkManager] Mất kết nối: {reason}");
-        OnDisconnectedEvent?.Invoke(reason.ToString());
-    }
-
-    public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
-        => Debug.Log($"[FusionNetworkManager] Player joined: {player}");
-
-    public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
-        => Debug.Log($"[FusionNetworkManager] Player left: {player}");
-
-    public override void OnShutdown(NetworkRunner runner, ShutdownReason reason)
-    {
-        Debug.Log($"[FusionNetworkManager] Shutdown: {reason}");
-        Runner = null;
-    }
-
-    public override void OnConnectFailed(NetworkRunner runner, NetAddress remoteAddress, NetConnectFailedReason reason)
-    {
-        Debug.LogError($"[FusionNetworkManager] Connect thất bại: {reason}");
-        OnJoinFailedEvent?.Invoke(reason.ToString());
-    }
-
-    public override void OnSceneLoadDone(NetworkRunner runner)
-        => Debug.Log("[FusionNetworkManager] Scene load xong!");
-
-    public override void OnSceneLoadStart(NetworkRunner runner)
-        => Debug.Log($"[FusionNetworkManager] Bắt đầu load scene...");
-
-    public bool       IsConnected     => Runner != null && Runner.IsRunning;
-    public bool       IsHost          => Runner != null && Runner.IsServer;
-    public int        MaxPlayers      => maxPlayers;
-    public PlayerData LocalPlayerData => playerData;
+    public override void OnShutdown(NetworkRunner runner, ShutdownReason reason) 
+        => Runner = null;
 }
