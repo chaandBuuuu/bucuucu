@@ -9,60 +9,48 @@ public class LobbyCharacterSelectUI : MonoBehaviour
     [SerializeField] private Button[] carButtons = new Button[4];
     [SerializeField] private TMP_Text selectedCarText;
 
-    [Header("Ready Button")]
-    [SerializeField] private Button readyButton;
-
-    [Header("Status")]
+    [Header("Status Text")]
     [SerializeField] private TMP_Text statusText;
 
-    [Header("UI Management")]
-    [SerializeField] private GameObject lobbyCanvas;           // Kéo Canvas Lobby vào đây
-    [SerializeField] private GameObject waitingForHostPanel;   // Panel hiện "Đang chờ Host bắt đầu"
+    [Header("Panels")]
+    [SerializeField] private GameObject characterSelectPanel;   // Panel chứa nút chọn xe
+    [SerializeField] private GameObject waitingPanel;           // Panel "Đang chờ Host bắt đầu" (cho Client)
 
     private readonly string[] carNames = { "Hacker", "Ghost Hunter", "Priest", "Scientist" };
     private readonly Color[] carColors = { Color.red, Color.green, Color.yellow, new Color(0f, 0.5f, 1f) };
 
     private int _selectedCarIndex = -1;
-    private bool _isReady = false;
 
     private void Start()
     {
+        // Setup nút chọn xe
         for (int i = 0; i < carButtons.Length; i++)
         {
-            int idx = i;
-            carButtons[i].onClick.AddListener(() => SelectCar(idx));
+            int index = i;
+            carButtons[i].onClick.AddListener(() => OnCarSelected(index));
         }
 
-        if (readyButton != null)
-            readyButton.onClick.AddListener(OnReadyClicked);
+        // Reset panels
+        if (characterSelectPanel != null) characterSelectPanel.SetActive(true);
+        if (waitingPanel != null) waitingPanel.SetActive(false);
 
-        // Ẩn panel chờ Host lúc đầu
-        if (waitingForHostPanel != null)
-            waitingForHostPanel.SetActive(false);
+        UpdateStatus("Chọn xe của bạn!");
     }
 
-    private void SelectCar(int index)
+    private void OnCarSelected(int index)
     {
         _selectedCarIndex = index;
+
+        // Hiển thị xe đã chọn
         if (selectedCarText != null)
         {
             selectedCarText.text = $"Xe: {carNames[index]}";
             selectedCarText.color = carColors[index];
         }
+
         UpdateStatus($"Đã chọn: {carNames[index]}");
-    }
 
-    private void OnReadyClicked()
-    {
-        if (_selectedCarIndex < 0)
-        {
-            UpdateStatus("⚠️ Vui lòng chọn xe trước!");
-            return;
-        }
-
-        _isReady = true;
-
-        // Gửi lựa chọn xe
+        // Gửi lựa chọn xe lên server
         if (FusionNetworkManager.Instance?.Runner != null)
         {
             FusionNetworkManager.Instance.RPC_RegisterCarChoice(
@@ -70,18 +58,23 @@ public class LobbyCharacterSelectUI : MonoBehaviour
                 _selectedCarIndex);
         }
 
-        // Disable buttons
-        foreach (var btn in carButtons) btn.interactable = false;
-        if (readyButton != null) readyButton.interactable = false;
+        // TỰ ĐỘNG ẨN PANEL CHỌN XE
+        Invoke(nameof(HideCharacterSelectPanel), 0.5f);
+    }
 
-        UpdateStatus($"✅ Sẵn sàng với {carNames[_selectedCarIndex]}");
+    private void HideCharacterSelectPanel()
+    {
+        if (characterSelectPanel != null)
+        {
+            characterSelectPanel.SetActive(false);
+            Debug.Log("[LobbyCharacterSelectUI] Panel chọn xe đã tự động ẩn.");
+        }
 
-        // Nếu là Client → Hiện "Đang chờ Host bắt đầu"
-        if (FusionNetworkManager.Instance?.Runner != null && 
+        // Hiện panel chờ Host (nếu là Client)
+        if (waitingPanel != null && FusionNetworkManager.Instance?.Runner != null && 
             !FusionNetworkManager.Instance.Runner.IsServer)
         {
-            if (waitingForHostPanel != null)
-                waitingForHostPanel.SetActive(true);
+            waitingPanel.SetActive(true);
         }
     }
 
@@ -91,18 +84,6 @@ public class LobbyCharacterSelectUI : MonoBehaviour
             statusText.text = msg;
     }
 
-    // Public để GameStartController hoặc Host gọi
-    public bool IsReady() => _isReady;
+    // Public để các script khác lấy thông tin
     public int GetSelectedCarIndex() => _selectedCarIndex;
-
-    // Gọi hàm này khi Host bấm Start Game
-    public void HideLobbyUI()
-    {
-        if (lobbyCanvas != null)
-            lobbyCanvas.SetActive(false);
-        else
-            gameObject.SetActive(false);
-
-        Debug.Log("[LobbyCharacterSelectUI] Lobby UI đã ẩn.");
-    }
 }

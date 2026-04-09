@@ -730,12 +730,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: ba99f7a80a1799e4597dcd297e7a3a53, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::RacingCarSpawner
-  carPrefabList: {fileID: 0}
+  carPrefabList: {fileID: 11400000, guid: b8b0c3b5257bba64faef152c6594bc3e, type: 2}
   spawnPoints:
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
+  - {fileID: 1129075822}
+  - {fileID: 219688069}
+  - {fileID: 249442883}
+  - {fileID: 1922614943}
 --- !u!4 &423801983
 Transform:
   m_ObjectHideFlags: 0

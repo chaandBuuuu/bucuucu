@@ -223,7 +223,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 689.4, y: -460.26}
+  m_AnchoredPosition: {x: 689.4, y: -489.26}
   m_SizeDelta: {x: 541.203, y: 101.476}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &314494085
@@ -6306,8 +6306,9 @@ MonoBehaviour:
   selectedCarText: {fileID: 1675930676}
   readyButton: {fileID: 314494085}
   statusText: {fileID: 2117931969}
-  lobbyCanvas: {fileID: 927703661}
-  characterSelectPanel: {fileID: 1461896601}
+  characterSelectPanel: {fileID: 1417313876}
+  waitingForHostPanel: {fileID: 0}
+  startGameButtonPanel: {fileID: 314494083}
 --- !u!4 &1264415199
 Transform:
   m_ObjectHideFlags: 0
@@ -6323,6 +6324,11 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1417313876 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 3304211658898301382, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
+  m_PrefabInstance: {fileID: 1675930674}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1417504730
 GameObject:
   m_ObjectHideFlags: 0
@@ -6398,11 +6404,6 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1417504730}
   m_CullTransparentMesh: 1
---- !u!1 &1461896601 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 3304211658898301382, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
-  m_PrefabInstance: {fileID: 1675930674}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1614892136
 GameObject:
   m_ObjectHideFlags: 0
@@ -6446,6 +6447,30 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 927703662}
     m_Modifications:
+    - target: {fileID: 757144040147438061, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: -508
+      objectReference: {fileID: 0}
+    - target: {fileID: 757144040147438061, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: -205
+      objectReference: {fileID: 0}
+    - target: {fileID: 825626679756569554, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 480
+      objectReference: {fileID: 0}
+    - target: {fileID: 825626679756569554, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 53.256
+      objectReference: {fileID: 0}
+    - target: {fileID: 2162415411296432863, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: 480
+      objectReference: {fileID: 0}
+    - target: {fileID: 2162415411296432863, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: -205
+      objectReference: {fileID: 0}
     - target: {fileID: 3304211658898301382, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
       propertyPath: m_Name
       value: CharacterSelectPannel
@@ -6453,6 +6478,14 @@ PrefabInstance:
     - target: {fileID: 3304211658898301382, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
       propertyPath: m_IsActive
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 5340847748406631473, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
+      propertyPath: m_AnchoredPosition.x
+      value: -508
+      objectReference: {fileID: 0}
+    - target: {fileID: 5340847748406631473, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
+      propertyPath: m_AnchoredPosition.y
+      value: 53.256
       objectReference: {fileID: 0}
     - target: {fileID: 8355548928482411034, guid: f4a0f63b5f896b744becd6e17ce8f096, type: 3}
       propertyPath: m_Pivot.x
