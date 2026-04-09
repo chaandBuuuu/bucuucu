@@ -2,10 +2,6 @@ using UnityEngine;
 using Fusion;
 using Fusion.Sockets;
 
-/// <summary>
-/// Thu thập input cho racing game
-/// WASD - Di chuyển, Shift - Drift, Q - Use Powerup
-/// </summary>
 public class InputHandler : FusionCallbacksBase
 {
     private Vector2 _moveInput;
@@ -15,6 +11,13 @@ public class InputHandler : FusionCallbacksBase
     private bool    _pressE;
     private bool    _pressR;
     private bool    _pressF;
+
+    private void Awake()
+    {
+        // <<< THÊM DÒNG NÀY >>>
+        DontDestroyOnLoad(gameObject);
+        // InputHandler sẽ sống qua scene load (lobby → racing)
+    }
 
     private void Update()
     {
@@ -52,23 +55,25 @@ public class InputHandler : FusionCallbacksBase
 
     private void OnDestroy()
     {
-        FusionNetworkManager.Instance?.Runner?.RemoveCallbacks(this);
+        // An toàn khi shutdown
+        if (FusionNetworkManager.Instance?.Runner != null)
+            FusionNetworkManager.Instance.Runner.RemoveCallbacks(this);
     }
 
     public override void OnInput(NetworkRunner runner, NetworkInput input)
     {
-        Debug.Log($"[InputHandler] OnInput called - MoveInput={_moveInput}, IsDrifting={_isDrifting}");
+        // Debug.Log($"[InputHandler] OnInput called - MoveInput={_moveInput}, IsDrifting={_isDrifting}");
         
         input.Set(new NetworkInputData
         {
-            Direction = _moveInput,
-            MoveDirection = _moveInput,
-            IsDrifting = _isDrifting,
-            UsePowerup = _usePowerup,
-            IsPausing = _isPausing,
-            PressE = _pressE,
-            PressR = _pressR,
-            PressF = _pressF
+            Direction      = _moveInput,
+            MoveDirection  = _moveInput,
+            IsDrifting     = _isDrifting,
+            UsePowerup     = _usePowerup,
+            IsPausing      = _isPausing,
+            PressE         = _pressE,
+            PressR         = _pressR,
+            PressF         = _pressF
         });
         
         // Reset one-time flags
@@ -76,4 +81,3 @@ public class InputHandler : FusionCallbacksBase
         _usePowerup = false;
     }
 }
-
