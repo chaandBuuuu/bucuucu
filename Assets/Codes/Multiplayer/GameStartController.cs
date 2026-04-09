@@ -33,6 +33,16 @@ public class GameStartController : NetworkBehaviour
             statusText.text = $"Sẵn sàng: {ReadyCount}/{requiredPlayers}";
     }
 
+    /// <summary>
+    /// RPC gọi khi player chọn character và sẵn sàng
+    /// </summary>
+    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
+    public void RPC_PlayerReadyWithCharacter(int characterId)
+    {
+        if (!HasStateAuthority) return;
+        Debug.Log($"[GameStartController] Player ready with character {characterId}");
+    }
+
     private void CheckIfCanStart()
     {
         int playerCount = 0;

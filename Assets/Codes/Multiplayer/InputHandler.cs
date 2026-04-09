@@ -10,6 +10,9 @@ public class InputHandler : FusionCallbacksBase
 {
     private Vector2 _moveInput;
     private bool    _isPausing;
+    private bool    _pressE;
+    private bool    _pressR;
+    private bool    _pressF;
 
     private void Update()
     {
@@ -17,6 +20,10 @@ public class InputHandler : FusionCallbacksBase
             Input.GetAxisRaw("Horizontal"),
             Input.GetAxisRaw("Vertical")
         );
+
+        _pressE = Input.GetKeyDown(KeyCode.E);
+        _pressR = Input.GetKeyDown(KeyCode.R);
+        _pressF = Input.GetKeyDown(KeyCode.F);
 
         if (Input.GetKeyDown(KeyCode.P))
             _isPausing = true;
@@ -46,7 +53,11 @@ public class InputHandler : FusionCallbacksBase
         input.Set(new NetworkInputData
         {
             Direction = _moveInput,
-            IsPausing = _isPausing
+            MoveDirection = _moveInput,
+            IsPausing = _isPausing,
+            PressE = _pressE,
+            PressR = _pressR,
+            PressF = _pressF
         });
         _isPausing = false;
     }

@@ -5,7 +5,7 @@ using Fusion.Sockets;
 using System;
 using System.Threading.Tasks;
 
-public class FusionNetworkManager : FusionCallbacksBase
+public partial class FusionNetworkManager : FusionCallbacksBase
 {
     public static FusionNetworkManager Instance { get; private set; }
 
