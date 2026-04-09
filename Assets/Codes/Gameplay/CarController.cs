@@ -2,7 +2,6 @@ using UnityEngine;
 using Fusion;
 
 [RequireComponent(typeof(Rigidbody2D))]
-[RequireComponent(typeof(NetworkTransform))]   // ← Thêm như MultiplayerCharacter
 public class CarController : NetworkBehaviour
 {
     [Header("Movement")]
@@ -18,7 +17,10 @@ public class CarController : NetworkBehaviour
     private Rigidbody2D _rb;
     private SpriteRenderer _spriteRenderer;
 
-    // Giữ lại những Networked cần thiết cho gameplay
+    // Network properties - synced every frame
+    [Networked] private Vector2 NetworkVelocity { get; set; }
+    [Networked] private Vector3 NetworkPosition { get; set; }
+    [Networked] private float NetworkRotation { get; set; }
     [Networked] public bool IsDrifting { get; private set; }
     [Networked] public int LapsCompleted { get; set; }
     [Networked] public bool IsFinished { get; set; }
@@ -43,6 +45,7 @@ public class CarController : NetworkBehaviour
         _rb.constraints = RigidbodyConstraints2D.FreezeRotation;
         _rb.linearDamping = 0f;
         _rb.angularDamping = 0f;
+        _rb.isKinematic = true; // Start as kinematic
     }
 
     public override void Spawned()
@@ -50,21 +53,12 @@ public class CarController : NetworkBehaviour
         _powerupInventory = GetComponent<PowerupInventory>() ?? gameObject.AddComponent<PowerupInventory>();
 
         _localVelocity = Vector2.zero;
+        NetworkVelocity = Vector2.zero;
+        NetworkPosition = transform.position;
         _currentRotation = transform.rotation.eulerAngles.z;
+        NetworkRotation = _currentRotation;
 
-        // === CÁCH LÀM GIỐNG LOBBY ===
-        if (HasInputAuthority)
-        {
-            _rb.bodyType = RigidbodyType2D.Dynamic;
-            _rb.simulated = true;
-        }
-        else
-        {
-            _rb.bodyType = RigidbodyType2D.Kinematic;
-            _rb.simulated = false;
-        }
-
-        Debug.Log($"[CarController] ✅ Spawned - {gameObject.name} | HasInputAuthority={HasInputAuthority}");
+        Debug.Log($"[CarController] ✅ Spawned - {gameObject.name} | HasInputAuthority={HasInputAuthority} | Pos={transform.position}");
     }
 
     public override void FixedUpdateNetwork()
@@ -73,17 +67,41 @@ public class CarController : NetworkBehaviour
 
         if (HasInputAuthority)
         {
-            // ================== LOCAL PLAYER (Owner) ==================
+            // ================== AUTHORITY PLAYER (Local) ==================
             if (GetInput(out NetworkInputData input))
             {
                 HandleMovement(input);
                 HandlePowerup(input);
             }
 
-            // Đẩy velocity vào physics (giống LobbyPlayerController)
+            // Apply velocity to Rigidbody for physics
+            _rb.bodyType = RigidbodyType2D.Dynamic;
+            _rb.simulated = true;
             _rb.linearVelocity = _localVelocity;
+
+            // Sync to network EVERY FRAME
+            NetworkVelocity = _localVelocity;
+            NetworkPosition = transform.position;
+            NetworkRotation = _currentRotation;
+
+            if (Runner.Tick % 60 == 0)
+                Debug.Log($"[CarController] AUTHORITY {gameObject.name}: Vel={_localVelocity}, Pos={transform.position}");
         }
-        // Remote player: KHÔNG làm gì cả → NetworkTransform tự sync
+        else
+        {
+            // ================== REMOTE PLAYER ==================
+            // Disable Rigidbody to prevent interference
+            _rb.bodyType = RigidbodyType2D.Kinematic;
+            _rb.simulated = false;
+            _rb.linearVelocity = Vector2.zero;
+
+            // Apply synced position and rotation
+            transform.position = NetworkPosition;
+            transform.rotation = Quaternion.AngleAxis(NetworkRotation, Vector3.forward);
+
+            if (Runner.Tick % 60 == 0)
+                Debug.Log($"[CarController] REMOTE {gameObject.name}: NetPos={NetworkPosition}, NetVel={NetworkVelocity}");
+        }
     }
 
     private void HandleMovement(NetworkInputData input)
@@ -103,7 +121,7 @@ public class CarController : NetworkBehaviour
         float currentFriction = _isDrifting ? driftFriction : friction;
         _localVelocity *= currentFriction;
 
-        // Rotation (giống hệt code cũ)
+        // Rotation
         if (moveDir.magnitude > 0.01f)
         {
             float targetRotation = Mathf.Atan2(moveDir.y, moveDir.x) * Mathf.Rad2Deg - 90f;
