@@ -1,27 +1,25 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using Fusion;
 
 /// <summary>
-/// UI chọn nhân vật ở scene Lobby
+/// Chọn loại xe & Ready cho Racing Game
 /// </summary>
 public class LobbyCharacterSelectUI : MonoBehaviour
 {
-    [Header("Character Buttons")]
-    [SerializeField] private Button[] characterButtons = new Button[4];
-    [SerializeField] private TMP_Text selectedCharacterText;
+    [Header("Car Selection")]
+    [SerializeField] private Button[] carButtons = new Button[4];
+    [SerializeField] private TMP_Text selectedCarText;
 
-    [Header("Host Only")]
-    [SerializeField] private GameObject startButtonObj;
+    [Header("Ready Button")]
+    [SerializeField] private Button readyButton;
 
     [Header("Status")]
     [SerializeField] private TMP_Text statusText;
 
-    [Header("Canvas")]
-    [SerializeField] private GameObject canvasToHide; // ← THÊM: kéo Canvas chọn nhân vật vào đây
-
-    private readonly string[] _charNames  = { "Hacker", "Ghost Hunter", "Priest", "Scientist" };
-    private readonly Color[]  _charColors =
+    private readonly string[] _carNames = { "Hacker", "Ghost Hunter", "Priest", "Scientist" };
+    private readonly Color[] _carColors =
     {
         Color.red,
         Color.green,
@@ -29,47 +27,69 @@ public class LobbyCharacterSelectUI : MonoBehaviour
         new Color(0f, 0.5f, 1f)
     };
 
+    private int _selectedCarIndex = -1;
+    private bool _isReady = false;
+
     private void Start()
     {
-        for (int i = 0; i < characterButtons.Length; i++)
+        // Setup car selection buttons
+        for (int i = 0; i < carButtons.Length; i++)
         {
             int idx = i;
-            characterButtons[i].onClick.AddListener(() => SelectCharacter(idx));
+            carButtons[i].onClick.AddListener(() => SelectCar(idx));
         }
 
-        // Chỉ Host mới thấy nút Start
-        if (startButtonObj != null)
-        {
-            bool isHost = FusionNetworkManager.Instance != null && FusionNetworkManager.Instance.IsHost;
-            startButtonObj.SetActive(isHost);
-        }
+        // Setup ready button
+        if (readyButton != null)
+            readyButton.onClick.AddListener(OnReadyClicked);
 
-        UpdateStatus("Chọn nhân vật của bạn!");
+        UpdateStatus("Chọn loại xe của bạn!");
     }
 
-    private void SelectCharacter(int index)
+    private void SelectCar(int index)
     {
-        if (FusionNetworkManager.Instance != null)
-            FusionNetworkManager.Instance.SetSelectedCharacter(index);
+        _selectedCarIndex = index;
 
-        if (selectedCharacterText != null)
+        if (selectedCarText != null)
         {
-            selectedCharacterText.text  = $"Đã chọn: {_charNames[index]}";
-            selectedCharacterText.color = _charColors[index];
+            selectedCarText.text = $"Xe: {_carNames[index]}";
+            selectedCarText.color = _carColors[index];
         }
 
-        UpdateStatus($"Đã chọn: {_charNames[index]}");
-        Debug.Log($"[LobbyCharacterSelectUI] Chọn: {_charNames[index]}");
+        UpdateStatus($"Đã chọn: {_carNames[index]} - Nhấn Ready để xác nhận");
+        Debug.Log($"[LobbyCharacterSelectUI] Selected car: {_carNames[index]}");
+    }
 
-        // ← FIX: Tắt canvas sau khi chọn nhân vật
-        if (canvasToHide != null)
-            canvasToHide.SetActive(false);
-        else
-            Debug.LogWarning("[LobbyCharacterSelectUI] canvasToHide chưa được gán trong Inspector!");
+    private void OnReadyClicked()
+    {
+        if (_selectedCarIndex < 0)
+        {
+            UpdateStatus("⚠️ Vui lòng chọn xe trước!");
+            return;
+        }
+
+        _isReady = true;
+        
+        // Send to network manager
+        if (FusionNetworkManager.Instance != null)
+            FusionNetworkManager.Instance.SetSelectedCharacter(_selectedCarIndex);
+
+        // Disable buttons when ready
+        foreach (var btn in carButtons)
+            btn.interactable = false;
+        if (readyButton != null)
+            readyButton.interactable = false;
+
+        UpdateStatus($"✅ Đã sẵn sàng với {_carNames[_selectedCarIndex]}!");
+        Debug.Log($"[LobbyCharacterSelectUI] Player ready with car: {_carNames[_selectedCarIndex]}");
     }
 
     private void UpdateStatus(string msg)
     {
-        if (statusText != null) statusText.text = msg;
+        if (statusText != null)
+            statusText.text = msg;
     }
+
+    public bool IsReady() => _isReady;
+    public int GetSelectedCarIndex() => _selectedCarIndex;
 }

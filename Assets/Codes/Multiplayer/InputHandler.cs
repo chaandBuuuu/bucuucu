@@ -3,12 +3,14 @@ using Fusion;
 using Fusion.Sockets;
 
 /// <summary>
-/// Thu thập input và gửi lên Fusion mỗi network tick
-/// Dùng Input.GetAxisRaw — không cần Input Actions asset
+/// Thu thập input cho racing game
+/// WASD - Di chuyển, Shift - Drift, Q - Use Powerup
 /// </summary>
 public class InputHandler : FusionCallbacksBase
 {
     private Vector2 _moveInput;
+    private bool    _isDrifting;
+    private bool    _usePowerup;
     private bool    _isPausing;
     private bool    _pressE;
     private bool    _pressR;
@@ -16,11 +18,16 @@ public class InputHandler : FusionCallbacksBase
 
     private void Update()
     {
+        // Racing controls
         _moveInput = new Vector2(
             Input.GetAxisRaw("Horizontal"),
             Input.GetAxisRaw("Vertical")
         );
 
+        _isDrifting = Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift);
+        _usePowerup = Input.GetKeyDown(KeyCode.Q);
+
+        // Legacy controls
         _pressE = Input.GetKeyDown(KeyCode.E);
         _pressR = Input.GetKeyDown(KeyCode.R);
         _pressF = Input.GetKeyDown(KeyCode.F);
@@ -40,7 +47,7 @@ public class InputHandler : FusionCallbacksBase
             yield return null;
 
         FusionNetworkManager.Instance.Runner.AddCallbacks(this);
-        Debug.Log("[InputHandler] Đã đăng ký với Runner");
+        Debug.Log("[InputHandler] Input handler registered");
     }
 
     private void OnDestroy()
@@ -54,6 +61,8 @@ public class InputHandler : FusionCallbacksBase
         {
             Direction = _moveInput,
             MoveDirection = _moveInput,
+            IsDrifting = _isDrifting,
+            UsePowerup = _usePowerup,
             IsPausing = _isPausing,
             PressE = _pressE,
             PressR = _pressR,
@@ -62,3 +71,4 @@ public class InputHandler : FusionCallbacksBase
         _isPausing = false;
     }
 }
+

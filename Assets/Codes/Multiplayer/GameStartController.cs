@@ -1,27 +1,41 @@
 using UnityEngine;
 using TMPro;
 using Fusion;
+using UnityEngine.UI;
 
+/// <summary>
+/// Quản lý start race - chờ tất cả player sẵn sàng
+/// </summary>
 public class GameStartController : NetworkBehaviour
 {
     [Header("Config")]
-    [SerializeField] private int   requiredPlayers = 2;  // Số player cần để start
-    [SerializeField] private float checkInterval   = 1f;
+    [SerializeField] private int requiredPlayers = 4;
+    [SerializeField] private float checkInterval = 1f;
 
     [Header("UI")]
     [SerializeField] private TMP_Text statusText;
+    [SerializeField] private Button startRaceButton;
 
-    [Networked] private int  ReadyCount   { get; set; }
-    [Networked] private bool GameStarting { get; set; }
+    [Networked] private int ReadyCount { get; set; }
+    [Networked] private bool RaceStarting { get; set; }
 
     private float _lastCheck = 0f;
 
     public override void Spawned()
-        => Debug.Log("[GameStartController] Chờ tất cả player...");
+    {
+        Debug.Log("[GameStartController] Chờ player sẵn sàng...");
+        
+        if (startRaceButton != null)
+        {
+            startRaceButton.onClick.AddListener(OnStartRaceClicked);
+            bool isHost = HasStateAuthority;
+            startRaceButton.gameObject.SetActive(isHost);
+        }
+    }
 
     public override void FixedUpdateNetwork()
     {
-        if (!Runner.IsServer || GameStarting) return;
+        if (!Runner.IsServer || RaceStarting) return;
         if (Runner.SimulationTime - _lastCheck < checkInterval) return;
         _lastCheck = Runner.SimulationTime;
         CheckIfCanStart();
@@ -33,42 +47,45 @@ public class GameStartController : NetworkBehaviour
             statusText.text = $"Sẵn sàng: {ReadyCount}/{requiredPlayers}";
     }
 
-    /// <summary>
-    /// RPC gọi khi player chọn character và sẵn sàng
-    /// </summary>
-    [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
-    public void RPC_PlayerReadyWithCharacter(int characterId)
-    {
-        if (!HasStateAuthority) return;
-        Debug.Log($"[GameStartController] Player ready with character {characterId}");
-    }
-
     private void CheckIfCanStart()
     {
         int playerCount = 0;
         foreach (var _ in Runner.ActivePlayers) playerCount++;
 
-        // ✅ Đếm player đã chọn nhân vật (isReady = true trong PlayerData)
-        // Vì PlayerData là local scriptable object, dùng cách khác:
-        // Đếm số player có LobbyPlayerController (đã spawn = đã vào lobby)
         int readyCount = 0;
         foreach (var player in Runner.ActivePlayers)
         {
             if (Runner.TryGetPlayerObject(player, out NetworkObject obj))
             {
-                // Player có object trong lobby = đã sẵn sàng
                 readyCount++;
             }
         }
 
         ReadyCount = readyCount;
-        Debug.Log($"[GameStartController] Players: {playerCount}, Ready: {readyCount}/{requiredPlayers}");
+        Debug.Log($"[GameStartController] Players: {playerCount}/{requiredPlayers}, Ready: {readyCount}");
+    }
 
-        if (playerCount >= requiredPlayers && readyCount >= requiredPlayers)
+    private void OnStartRaceClicked()
+    {
+        if (!HasStateAuthority) return;
+        
+        int playerCount = 0;
+        foreach (var _ in Runner.ActivePlayers) playerCount++;
+
+        if (playerCount < requiredPlayers)
         {
-            GameStarting = true;
-            Debug.Log("[GameStartController] Bắt đầu game!");
-            Runner.LoadScene(SceneRef.FromIndex(2));
+            Debug.LogWarning($"[GameStartController] Cần {requiredPlayers} player, hiện có {playerCount}");
+            return;
         }
+
+        RaceStarting = true;
+        Debug.Log("[GameStartController] Bắt đầu race!");
+        LoadRacingScene();
+    }
+
+    private void LoadRacingScene()
+    {
+        // Load the racing scene (adjust index if needed)
+        Runner.LoadScene(SceneRef.FromIndex(2));
     }
 }
