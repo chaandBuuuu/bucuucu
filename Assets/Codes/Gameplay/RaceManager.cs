@@ -3,29 +3,31 @@ using System.Collections.Generic;
 using Fusion;
 
 /// <summary>
-/// Quản lý trạng thái cuộc đua - ĐÃ SỬA hoàn toàn (không còn lỗi IsSpawned)
+/// FIX:
+///   - RegisterLapCompletion() thêm HasStateAuthority check → tránh client ghi trực tiếp
+///     vào [Networked] state (sẽ throw exception trong Fusion)
+///   - Spawned() chỉ reset state khi race chưa bắt đầu → an toàn khi object respawn
+///   - _carLapCount dùng NetworkId thay vì CarController reference để tránh stale ref
 /// </summary>
 public class RaceManager : NetworkBehaviour
 {
     public static RaceManager Instance { get; private set; }
 
     [Header("Race Config")]
-    [SerializeField] private int lapsToWin = 4;
-    [SerializeField] private Transform finishLine;
-    [SerializeField] private Transform[] checkpoints;
+    [SerializeField] private int lapsToWin = RacingConstants.RACE_LAPS_TO_WIN;
 
-    [Networked] public bool RaceStarted { get; private set; }
-    [Networked] public bool RaceFinished { get; private set; }
-    [Networked] public float RaceTimer { get; private set; }
+    [Networked] public bool  RaceStarted  { get; private set; }
+    [Networked] public bool  RaceFinished { get; private set; }
+    [Networked] public float RaceTimer    { get; private set; }
 
-    private Dictionary<CarController, int> _carLapCount = new Dictionary<CarController, int>();
+    // FIX: Dùng NetworkId làm key để tránh stale reference sau scene reload
+    private Dictionary<NetworkId, int> _carLapCount = new Dictionary<NetworkId, int>();
     private CarController _winner = null;
+    private bool _isSpawned = false;
 
-    public event System.Action OnRaceStart;
-    public event System.Action<CarController> OnRaceEnd;
+    public event System.Action                   OnRaceStart;
+    public event System.Action<CarController>    OnRaceEnd;
     public event System.Action<CarController, int> OnLapComplete;
-
-    private bool _isSpawned = false;   // ← FIX: cờ an toàn
 
     private void Awake()
     {
@@ -35,21 +37,24 @@ public class RaceManager : NetworkBehaviour
 
     public override void Spawned()
     {
-        _isSpawned = true;                    // ← Đánh dấu đã spawn
-        RaceStarted = false;
-        RaceFinished = false;
-        RaceTimer = 0f;
-        Debug.Log("[RaceManager] ✅ Race initialized & Spawned!");
+        _isSpawned = true;
+
+        // FIX: Chỉ reset khi race CHƯA bắt đầu
+        // Tránh trường hợp NetworkObject bị despawn/respawn giữa chừng làm mất state
+        if (HasStateAuthority && !RaceStarted)
+        {
+            RaceStarted  = false;
+            RaceFinished = false;
+            RaceTimer    = 0f;
+            Debug.Log("[RaceManager] ✅ Race initialized!");
+        }
     }
 
     public override void FixedUpdateNetwork()
     {
         if (!HasStateAuthority) return;
-
         if (RaceStarted && !RaceFinished)
-        {
             RaceTimer += Runner.DeltaTime;
-        }
     }
 
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
@@ -57,50 +62,54 @@ public class RaceManager : NetworkBehaviour
     {
         if (!HasStateAuthority) return;
         RaceStarted = true;
-        RaceTimer = 0f;
+        RaceTimer   = 0f;
         OnRaceStart?.Invoke();
-        Debug.Log("[RaceManager] Race started!");
+        Debug.Log("[RaceManager] Race bắt đầu!");
     }
 
+    /// <summary>
+    /// FIX: Thêm HasStateAuthority guard — chỉ server được ghi networked state.
+    /// Trước đây không có guard → client gọi trực tiếp sẽ throw Fusion exception.
+    /// </summary>
     public void RegisterLapCompletion(CarController car)
     {
+        // FIX: Authority check
+        if (!HasStateAuthority) return;
         if (!RaceStarted || RaceFinished) return;
 
-        if (!_carLapCount.ContainsKey(car))
-            _carLapCount[car] = 0;
+        NetworkId carId = car.Object.Id;
 
-        _carLapCount[car]++;
-        int laps = _carLapCount[car];
+        if (!_carLapCount.ContainsKey(carId))
+            _carLapCount[carId] = 0;
+
+        _carLapCount[carId]++;
+        int laps = _carLapCount[carId];
 
         OnLapComplete?.Invoke(car, laps);
-        Debug.Log($"[RaceManager] {car.name} completed lap {laps}");
+        Debug.Log($"[RaceManager] {car.name} hoàn thành vòng {laps}/{lapsToWin}");
 
         if (laps >= lapsToWin)
-        {
             FinishRace(car);
-        }
     }
 
     private void FinishRace(CarController winner)
     {
         if (RaceFinished) return;
         RaceFinished = true;
-        _winner = winner;
+        _winner      = winner;
         OnRaceEnd?.Invoke(winner);
-        Debug.Log($"[RaceManager] {winner.name} won the race in {RaceTimer:F2}s!");
+        Debug.Log($"[RaceManager] {winner.name} thắng sau {RaceTimer:F2}s!");
     }
 
     public int GetLapCount(CarController car)
     {
-        return _carLapCount.ContainsKey(car) ? _carLapCount[car] : 0;
+        if (car == null || car.Object == null) return 0;
+        return _carLapCount.TryGetValue(car.Object.Id, out int count) ? count : 0;
     }
 
-    /// <summary>
-    /// Lấy thời gian an toàn (không crash trước khi Spawned)
-    /// </summary>
     public float GetRaceTime()
     {
-        if (!_isSpawned) return 0f;   // ← FIX: dùng cờ local
+        if (!_isSpawned) return 0f;
         return RaceTimer;
     }
 

@@ -1,48 +1,59 @@
 using UnityEngine;
+using Fusion;
 
 /// <summary>
 /// Enum cho các loại powerup
 /// </summary>
 public enum PowerupType
 {
-    Shield,      // 3 giây khiên
-    Gun,         // Bắn đạn, Q để kích hoạt
-    SpeedBoost,  // Tăng tốc độ
-    Trap         // Đặt bẫy làm chậm
+    Shield,     // Khiên bảo vệ 3 giây
+    Gun,        // Bắn đạn vào xe phía trước
+    SpeedBoost, // Tăng tốc độ
+    Trap        // Đặt bẫy làm chậm
 }
 
 /// <summary>
-/// Quản lý inventory powerup của xe
+/// Quản lý inventory powerup của xe.
+/// FIX:
+///   - SpeedBoost thực sự hoạt động qua CarController.ApplySpeedBoost()
+///   - Shield reset màu khi hết hạn
+///   - Bullet và Trap dùng [SerializeField] prefab thay vì Resources.Load
+///   - FireGun dùng runner.Spawn thay vì Instantiate để đạn xuất hiện trên tất cả client
+///   - Xóa _slowRemainingTime không sử dụng
 /// </summary>
-public class PowerupInventory : MonoBehaviour
+public class PowerupInventory : NetworkBehaviour
 {
-    [SerializeField] private int maxPowerups = 1;
+    [Header("Prefabs — kéo từ Project vào Inspector")]
+    [SerializeField] private NetworkObject bulletPrefab;
+    [SerializeField] private NetworkObject trapPrefab;
+
     private PowerupType? _currentPowerup = null;
-    private float _shieldRemainingTime = 0f;
-    private float _slowRemainingTime = 0f;
-    private bool _hasShield = false;
+    private float        _shieldRemainingTime = 0f;
+    private bool         _hasShield = false;
+    private Color        _originalColor = Color.white;
+    private SpriteRenderer _sr;
 
     public event System.Action<PowerupType> OnPowerupAcquired;
     public event System.Action<PowerupType> OnPowerupUsed;
-    public event System.Action OnPowerupEmpty;
+    public event System.Action              OnPowerupEmpty;
+
+    public override void Spawned()
+    {
+        _sr = GetComponent<SpriteRenderer>();
+        if (_sr != null) _originalColor = _sr.color;
+    }
 
     private void Update()
     {
-        // Update shield timer
-        if (_hasShield)
-        {
-            _shieldRemainingTime -= Time.deltaTime;
-            if (_shieldRemainingTime <= 0)
-            {
-                _hasShield = false;
-                Debug.Log("[PowerupInventory] Shield expired");
-            }
-        }
+        if (!_hasShield) return;
 
-        // Update slow timer
-        if (_slowRemainingTime > 0)
+        _shieldRemainingTime -= Time.deltaTime;
+        if (_shieldRemainingTime <= 0f)
         {
-            _slowRemainingTime -= Time.deltaTime;
+            _hasShield = false;
+            // FIX: Reset màu xe về màu gốc khi shield hết hạn
+            if (_sr != null) _sr.color = _originalColor;
+            Debug.Log("[PowerupInventory] Shield hết hạn");
         }
     }
 
@@ -50,6 +61,7 @@ public class PowerupInventory : MonoBehaviour
     {
         _currentPowerup = type;
         OnPowerupAcquired?.Invoke(type);
+        Debug.Log($"[PowerupInventory] Nhận powerup: {type}");
     }
 
     public void UseCurrent()
@@ -57,116 +69,160 @@ public class PowerupInventory : MonoBehaviour
         if (_currentPowerup == null) return;
 
         PowerupType type = _currentPowerup.Value;
-        
+
         switch (type)
         {
-            case PowerupType.Shield:
-                ActivateShield();
-                break;
-            case PowerupType.Gun:
-                FireGun();
-                break;
-            case PowerupType.SpeedBoost:
-                ActivateSpeedBoost();
-                break;
-            case PowerupType.Trap:
-                PlaceTrap();
-                break;
+            case PowerupType.Shield:     ActivateShield();    break;
+            case PowerupType.Gun:        FireGun();           break;
+            case PowerupType.SpeedBoost: ActivateSpeedBoost(); break;
+            case PowerupType.Trap:       PlaceTrap();         break;
         }
 
         OnPowerupUsed?.Invoke(type);
         _currentPowerup = null;
+        OnPowerupEmpty?.Invoke();
     }
+
+    // ── Powerup implementations ──────────────────────────────────────────────
 
     private void ActivateShield()
     {
-        _hasShield = true;
-        _shieldRemainingTime = 3f;
-        
-        // Visual: tô màu xanh lá
-        var sr = GetComponent<SpriteRenderer>();
-        if (sr != null)
-            sr.color = new Color(0.5f, 1f, 0.5f, 1f);
-        
-        Debug.Log("[PowerupInventory] Shield activated!");
+        _hasShield           = true;
+        _shieldRemainingTime = RacingConstants.SHIELD_DURATION;
+
+        if (_sr != null)
+            _sr.color = new Color(0.5f, 1f, 0.5f, 1f); // Xanh lá = shield active
+
+        Debug.Log("[PowerupInventory] Shield kích hoạt!");
     }
 
     private void FireGun()
     {
-        var carController = GetComponent<CarController>();
-        if (carController == null) return;
+        // Chỉ owner của xe mới bắn (HasInputAuthority)
+        if (!HasInputAuthority) return;
+
+        var selfCar = GetComponent<CarController>();
+        if (selfCar == null) return;
 
         // Tìm xe phía trước gần nhất
-        var allCars = FindObjectsByType<CarController>();
-        CarController targetCar = null;
-        float minDistance = float.MaxValue;
-
-        Vector2 carPos = transform.position;
-        Vector3 carForward = transform.up;
-
-        foreach (var car in allCars)
+        CarController targetCar = FindNearestCarAhead(selfCar);
+        if (targetCar == null)
         {
-            if (car == carController) continue;
-            
-            Vector2 targetPos = car.transform.position;
-            Vector2 dirToCar = (targetPos - carPos).normalized;
-            
-            // Chỉ target xe phía trước
-            if (Vector2.Dot(carForward, dirToCar) > 0.5f)
-            {
-                float distance = Vector2.Distance(carPos, targetPos);
-                if (distance < minDistance)
-                {
-                    minDistance = distance;
-                    targetCar = car;
-                }
-            }
+            Debug.Log("[PowerupInventory] Không có mục tiêu phía trước");
+            return;
         }
 
-        if (targetCar != null)
+        if (bulletPrefab == null)
         {
-            // Spawn bullet
-            var bulletPrefab = Resources.Load<BulletProjectile>("Prefabs/Bullet");
-            if (bulletPrefab != null)
-            {
-                var bullet = Instantiate(bulletPrefab, transform.position, Quaternion.identity);
-                bullet.SetTarget(targetCar);
-                Debug.Log("[PowerupInventory] Gun fired!");
-            }
+            Debug.LogError("[PowerupInventory] bulletPrefab chưa được gán trong Inspector!");
+            return;
         }
+
+        // FIX: Dùng runner.Spawn để đạn xuất hiện trên TẤT CẢ client
+        // Trước đây Instantiate() chỉ tạo local → client khác không thấy đạn
+        RPC_SpawnBullet(targetCar.Object.Id, transform.position, transform.rotation);
+    }
+
+    /// <summary>
+    /// RPC lên server để spawn bullet — server spawn NetworkObject rồi sync xuống.
+    /// </summary>
+    [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
+    private void RPC_SpawnBullet(NetworkId targetId, Vector3 spawnPos, Quaternion spawnRot)
+    {
+        if (bulletPrefab == null) return;
+
+        // Tìm NetworkObject của target theo ID
+        if (!Runner.TryFindObject(targetId, out NetworkObject targetObj)) return;
+        var targetCar = targetObj.GetComponent<CarController>();
+        if (targetCar == null) return;
+
+        NetworkObject bulletObj = Runner.Spawn(bulletPrefab, spawnPos, spawnRot,
+                                               inputAuthority: Object.InputAuthority);
+        var bullet = bulletObj.GetComponent<BulletProjectile>();
+        if (bullet != null)
+            bullet.SetTarget(targetCar);
+
+        Debug.Log($"[PowerupInventory] Đạn được bắn vào {targetObj.name}");
     }
 
     private void ActivateSpeedBoost()
     {
-        var carController = GetComponent<CarController>();
-        if (carController != null)
-        {
-            // Tạm thời tăng maxSpeed
-            StartCoroutine(SpeedBoostCoroutine());
-        }
-        Debug.Log("[PowerupInventory] Speed boost activated!");
+        // FIX: Gọi API trên CarController thay vì placeholder rỗng
+        // CarController.ApplySpeedBoost() set [Networked] SpeedMultiplier → sync mọi client
+        var car = GetComponent<CarController>();
+        if (car == null) return;
+
+        // Chỉ StateAuthority được gọi ApplySpeedBoost (nó check bên trong)
+        // Client gửi RPC lên server
+        RPC_RequestSpeedBoost();
+        Debug.Log("[PowerupInventory] SpeedBoost kích hoạt!");
     }
 
-    private System.Collections.IEnumerator SpeedBoostCoroutine()
+    [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
+    private void RPC_RequestSpeedBoost()
     {
-        var carController = GetComponent<CarController>();
-        // Access to maxSpeed through reflection or public method
-        // For now, just a placeholder
-        yield return new WaitForSeconds(5f);
+        var car = GetComponent<CarController>();
+        if (car != null)
+            car.ApplySpeedBoost(RacingConstants.SPEED_BOOST_MULTIPLIER,
+                                RacingConstants.SPEED_BOOST_DURATION);
     }
 
     private void PlaceTrap()
     {
-        // Tạo trap object tại vị trí hiện tại
-        var trapPrefab = Resources.Load<TrapObject>("Prefabs/Trap");
-        if (trapPrefab != null)
+        if (!HasInputAuthority) return;
+
+        if (trapPrefab == null)
         {
-            Instantiate(trapPrefab, transform.position, Quaternion.identity);
-            Debug.Log("[PowerupInventory] Trap placed!");
+            Debug.LogError("[PowerupInventory] trapPrefab chưa được gán trong Inspector!");
+            return;
         }
+
+        // FIX: Dùng RPC → server spawn trap NetworkObject
+        RPC_SpawnTrap(transform.position);
+        Debug.Log("[PowerupInventory] Bẫy được đặt!");
     }
 
-    public bool HasShield() => _hasShield;
-    public PowerupType? GetCurrentPowerup() => _currentPowerup;
-    public bool HasPowerup() => _currentPowerup.HasValue;
+    [Rpc(RpcSources.InputAuthority, RpcTargets.StateAuthority)]
+    private void RPC_SpawnTrap(Vector3 pos)
+    {
+        if (trapPrefab == null) return;
+        Runner.Spawn(trapPrefab, pos, Quaternion.identity);
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private CarController FindNearestCarAhead(CarController self)
+    {
+        var allCars    = FindObjectsByType<CarController>(FindObjectsSortMode.None);
+        CarController nearest = null;
+        float minDist  = float.MaxValue;
+
+        Vector2 selfPos     = transform.position;
+        Vector2 selfForward = transform.up;
+
+        foreach (var car in allCars)
+        {
+            if (car == self) continue;
+
+            Vector2 dirToCar = ((Vector2)car.transform.position - selfPos).normalized;
+
+            // Chỉ nhắm xe phía trước (dot > 0.5 ≈ trong góc 60° phía trước)
+            if (Vector2.Dot(selfForward, dirToCar) <= 0.5f) continue;
+
+            float dist = Vector2.Distance(selfPos, car.transform.position);
+            if (dist < minDist)
+            {
+                minDist = dist;
+                nearest = car;
+            }
+        }
+
+        return nearest;
+    }
+
+    // ── Public API ───────────────────────────────────────────────────────────
+
+    public bool          HasShield()         => _hasShield;
+    public PowerupType?  GetCurrentPowerup() => _currentPowerup;
+    public bool          HasPowerup()        => _currentPowerup.HasValue;
 }

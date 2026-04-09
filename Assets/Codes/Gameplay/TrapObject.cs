@@ -1,31 +1,53 @@
 using UnityEngine;
 using System.Collections.Generic;
+using Fusion;
 
 /// <summary>
-/// Bẫy - làm chậm xe khi đi qua trong 3 giây
+/// FIX:
+///   - Chuyển thành NetworkBehaviour — được spawn qua runner.Spawn() từ PowerupInventory
+///     nên tồn tại trên tất cả client. Trước đây Instantiate() chỉ tạo local.
+///   - Chỉ server xử lý OnTriggerEnter2D để tránh apply slow 2 lần
+///   - Dùng RacingConstants thay vì hardcode
+///   - Server tự despawn sau TRAP_LIFETIME
 /// </summary>
-public class TrapObject : MonoBehaviour
+[RequireComponent(typeof(Collider2D))]
+public class TrapObject : NetworkBehaviour
 {
     [Header("Trap Config")]
-    [SerializeField] private float slowAmount = 0.6f; // Giảm 60% tốc độ
-    [SerializeField] private float slowDuration = 3f;
-    
-    private HashSet<CarController> _affectedCars = new HashSet<CarController>();
+    [SerializeField] private float slowAmount  = RacingConstants.TRAP_SLOW_AMOUNT;
+    [SerializeField] private float slowDuration = RacingConstants.TRAP_SLOW_DURATION;
+
+    // HashSet lưu NetworkId để tránh affect cùng xe nhiều lần
+    private HashSet<NetworkId> _affectedCars = new HashSet<NetworkId>();
+
+    public override void Spawned()
+    {
+        // Chỉ server quản lý lifetime và despawn
+        if (Runner.IsServer)
+            StartCoroutine(DespawnCoroutine());
+    }
 
     private void OnTriggerEnter2D(Collider2D collision)
     {
-        var carController = collision.GetComponent<CarController>();
-        if (carController == null || _affectedCars.Contains(carController)) return;
+        // FIX: Chỉ server xử lý → tránh slow được gọi từ nhiều client
+        if (!Runner.IsServer) return;
 
-        _affectedCars.Add(carController);
-        carController.RPC_ApplySlow(slowAmount, slowDuration);
-        
-        Debug.Log($"[TrapObject] {carController.name} hit trap!");
+        var car = collision.GetComponent<CarController>();
+        if (car == null) return;
+        if (car.IsFinished) return;
+
+        NetworkId carId = car.Object.Id;
+        if (_affectedCars.Contains(carId)) return;
+
+        _affectedCars.Add(carId);
+        car.RPC_ApplySlow(slowAmount, slowDuration);
+        Debug.Log($"[TrapObject] {car.name} dính bẫy!");
     }
 
-    private void Start()
+    private System.Collections.IEnumerator DespawnCoroutine()
     {
-        // Trap tự hủy sau 10 giây hoặc khi 3 cars hit
-        Destroy(gameObject, 15f);
+        yield return new WaitForSeconds(RacingConstants.TRAP_LIFETIME);
+        if (Object != null && Object.IsValid)
+            Runner.Despawn(Object);
     }
 }

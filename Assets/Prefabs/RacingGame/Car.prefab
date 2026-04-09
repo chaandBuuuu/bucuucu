@@ -57,6 +57,7 @@ MonoBehaviour:
   NetworkedBehaviours:
   - {fileID: 3486199251185615620}
   - {fileID: 6054473650308096572}
+  - {fileID: 1615125164952445144}
   ForceRemoteRenderTimeframe: 0
 --- !u!114 &3486199251185615620
 MonoBehaviour:
@@ -241,4 +242,5 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 69138e85a6bd1484cad30de5ac2fee13, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PowerupInventory
-  maxPowerups: 1
+  bulletPrefab: {fileID: 0}
+  trapPrefab: {fileID: 0}
