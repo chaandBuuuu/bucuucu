@@ -19,16 +19,10 @@ public class CarController : NetworkBehaviour
     private PowerupInventory _powerupInventory;
 
     // ── Networked state ──────────────────────────────────────────────────────
-    [Networked] private Vector2 NetworkVelocity    { get; set; }
-    [Networked] private Vector3 NetworkPosition    { get; set; }
-    [Networked] private float   NetworkRotation    { get; set; }
-    [Networked] public  bool    IsDrifting         { get; private set; }
-    [Networked] public  int     LapsCompleted      { get; set; }
-    [Networked] public  bool    IsFinished         { get; set; }
-
-    // FIX: Networked speed multiplier thay vì modify maxSpeed local mỗi client
-    // Chỉ StateAuthority ghi, tất cả client đọc → không desync
-    [Networked] private float SpeedMultiplier { get; set; } = 1f;
+    [Networked] public  bool    IsDrifting    { get; private set; }
+    [Networked] public  int     LapsCompleted { get; set; }
+    [Networked] public  bool    IsFinished    { get; set; }
+    [Networked] private float   SpeedMultiplier { get; set; } = 1f;
 
     // ── Local state ──────────────────────────────────────────────────────────
     private Vector2 _localVelocity   = Vector2.zero;
@@ -38,45 +32,35 @@ public class CarController : NetworkBehaviour
     public event System.Action<int> OnLapCompleted;
     public event System.Action      OnRaceFinished;
 
-    // ────────────────────────────────────────────────────────────────────────
     private void Awake()
     {
         _rb             = GetComponent<Rigidbody2D>();
         _spriteRenderer = GetComponent<SpriteRenderer>();
 
-        if (_rb == null) _rb = gameObject.AddComponent<Rigidbody2D>();
-
-        _rb.gravityScale  = 0f;
-        _rb.constraints   = RigidbodyConstraints2D.FreezeRotation;
-        _rb.linearDamping = 0f;
+        _rb.gravityScale   = 0f;
+        _rb.constraints    = RigidbodyConstraints2D.FreezeRotation;
+        _rb.linearDamping  = 0f;
         _rb.angularDamping = 0f;
-        // isKinematic sẽ được set trong Spawned()
     }
 
     public override void Spawned()
     {
-        _powerupInventory = GetComponent<PowerupInventory>()
-                         ?? gameObject.AddComponent<PowerupInventory>();
+        _powerupInventory = GetComponent<PowerupInventory>() ?? gameObject.AddComponent<PowerupInventory>();
 
         _localVelocity   = Vector2.zero;
-        NetworkVelocity  = Vector2.zero;
-        NetworkPosition  = transform.position;
         _currentRotation = transform.rotation.eulerAngles.z;
-        NetworkRotation  = _currentRotation;
         SpeedMultiplier  = 1f;
 
+        // Authority setup cho Rigidbody
         if (HasInputAuthority)
         {
             _rb.isKinematic    = false;
-            _rb.gravityScale   = 0f;
             _rb.linearVelocity = Vector2.zero;
             Debug.Log($"[CarController] ✅ Spawned AUTHORITY - {gameObject.name}");
         }
         else
         {
-            _rb.isKinematic    = true;
-            _rb.gravityScale   = 0f;
-            _rb.linearVelocity = Vector2.zero;
+            _rb.isKinematic    = true;   // Remote car dùng NetworkTransform
             Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name}");
         }
     }
@@ -85,33 +69,27 @@ public class CarController : NetworkBehaviour
     {
         if (IsFinished) return;
 
-        // FIX: Re-sync RB type nếu authority được gán sau Spawned()
+        // Re-enable physics cho owner nếu bị reset
         if (HasInputAuthority && _rb.isKinematic)
         {
             _rb.isKinematic    = false;
-            _rb.gravityScale   = 0f;
             _rb.linearVelocity = Vector2.zero;
         }
 
-        if (HasInputAuthority)
+        // ====================== FIX CHÍNH ======================
+        // Server + Owner đều simulate movement (giống LobbyPlayerController)
+        if (GetInput(out NetworkInputData input))
         {
-            if (GetInput(out NetworkInputData input))
-            {
-                HandleMovement(input);
-                HandlePowerup(input);
-            }
+            HandleMovement(input);
+            HandlePowerup(input);
+        }
 
+        // Chỉ apply velocity trên máy đang simulate (owner + server)
+        if (HasInputAuthority || HasStateAuthority)
+        {
             _rb.linearVelocity = _localVelocity;
-
-            NetworkVelocity = _localVelocity;
-            NetworkPosition = transform.position;
-            NetworkRotation = _currentRotation;
         }
-        else
-        {
-            transform.position = NetworkPosition;
-            transform.rotation = Quaternion.AngleAxis(NetworkRotation, Vector3.forward);
-        }
+        // =======================================================
     }
 
     private void HandleMovement(NetworkInputData input)
@@ -120,7 +98,6 @@ public class CarController : NetworkBehaviour
         _isDrifting      = input.IsDrifting;
         IsDrifting       = _isDrifting;
 
-        // Tốc độ tối đa có tính multiplier (SpeedBoost / Slow)
         float effectiveMaxSpeed = maxSpeed * SpeedMultiplier;
 
         if (moveDir.magnitude > 0.01f)
@@ -132,14 +109,15 @@ public class CarController : NetworkBehaviour
         float currentFriction = _isDrifting ? driftFriction : friction;
         _localVelocity *= currentFriction;
 
+        // Rotation
         if (moveDir.magnitude > 0.01f)
         {
             float targetRotation = Mathf.Atan2(moveDir.y, moveDir.x) * Mathf.Rad2Deg - 90f;
             float rotSpeed       = _isDrifting
                                  ? rotationSpeed * driftRotationMultiplier
                                  : rotationSpeed;
-            _currentRotation = Mathf.LerpAngle(_currentRotation, targetRotation,
-                                                rotSpeed * Runner.DeltaTime);
+
+            _currentRotation = Mathf.LerpAngle(_currentRotation, targetRotation, rotSpeed * Runner.DeltaTime);
             transform.rotation = Quaternion.AngleAxis(_currentRotation, Vector3.forward);
         }
     }
@@ -151,7 +129,6 @@ public class CarController : NetworkBehaviour
     }
 
     // ── Public API ───────────────────────────────────────────────────────────
-
     public void PickupPowerup(PowerupType type)
     {
         if (_powerupInventory != null)
@@ -162,10 +139,6 @@ public class CarController : NetworkBehaviour
     public Vector2          GetVelocity()         => _localVelocity;
     public float            GetSpeed()            => _localVelocity.magnitude;
 
-    /// <summary>
-    /// FIX: SpeedBoost API — PowerupInventory gọi hàm này thay vì tự modify maxSpeed.
-    /// StateAuthority set SpeedMultiplier → sync tự động đến mọi client.
-    /// </summary>
     public void ApplySpeedBoost(float multiplier, float duration)
     {
         if (!HasStateAuthority) return;
@@ -180,7 +153,6 @@ public class CarController : NetworkBehaviour
     }
 
     // ── RPCs ─────────────────────────────────────────────────────────────────
-
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
     public void RPC_CompleteLap()
     {
@@ -194,10 +166,6 @@ public class CarController : NetworkBehaviour
         }
     }
 
-    /// <summary>
-    /// FIX: Chỉ StateAuthority xử lý slow → set SpeedMultiplier networked.
-    /// Trước đây RpcTargets.All gây desync maxSpeed giữa các client.
-    /// </summary>
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
     public void RPC_ApplySlow(float slowAmount, float duration)
     {
