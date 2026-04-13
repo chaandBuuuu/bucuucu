@@ -30,7 +30,7 @@ public class RacingGameAutoSetup : MonoBehaviour
         CheckRaceManager();    // 1. Kiểm tra (không tạo)
         CreateFinishLine();    // 2. FinishLine
         CreateSpawnPoints();   // 3. Spawn Points
-        CreatePowerupItems();  // 4. Powerup Items
+        // ✅ DISABLED: CreatePowerupItems();  // 4. Powerup Items (removed system)
         CreateRaceUICanvas();  // 5. UI Canvas
 
         Debug.Log("[RacingGameAutoSetup] ✅ Thiết lập hoàn tất!");

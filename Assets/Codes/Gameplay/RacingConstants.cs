@@ -15,7 +15,7 @@ public static class RacingConstants
     public const float CAR_DRIFT_ROTATION_MULTIPLIER = 1.5f;
 
     // ── Race Configuration ───────────────────────────────────────────────────
-    public const int RACE_LAPS_TO_WIN = 4;
+    public const int RACE_LAPS_TO_WIN = 1;  // ✅ FIX: 1 lap = First to cross finish line wins
     public const int MAX_PLAYERS      = 4;
 
     // ── Powerup Settings ─────────────────────────────────────────────────────

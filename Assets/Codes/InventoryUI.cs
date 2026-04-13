@@ -2,6 +2,11 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
+/// <summary>
+/// ✅ DEPRECATED: Old inventory UI removed in favor of pure racing gameplay
+/// </summary>
+#pragma warning disable CS0649 // Field is never assigned
+
 public class InventoryUI : MonoBehaviour
 {
     [Header("Slot UI")]
@@ -90,3 +95,5 @@ public class InventoryUI : MonoBehaviour
         }
     }
 }
+
+#pragma warning restore CS0649

@@ -77,13 +77,31 @@ public class RacingCarSpawner : FusionCallbacksBase
             return;
         }
 
+        // ✅ FIX: Đảm bảo carPrefabList có sẵn
+        if (carPrefabList == null)
+        {
+            carPrefabList = FusionNetworkManager.Instance.carPrefabList;
+            if (carPrefabList == null)
+            {
+                Debug.LogError("[RacingCarSpawner] carPrefabList không được gán! Hãy kiểm tra FusionNetworkManager");
+                return;
+            }
+        }
+
         int carIndex = FusionNetworkManager.Instance.GetPlayerCarChoice(player);
-        NetworkObject prefab = (carPrefabList != null && carIndex < carPrefabList.carPrefabs.Length) 
-            ? carPrefabList.carPrefabs[carIndex] : null;
+        
+        // ✅ FIX: Validate car index
+        if (carIndex < 0 || carIndex >= carPrefabList.carPrefabs.Length)
+        {
+            Debug.LogWarning($"[RacingCarSpawner] carIndex {carIndex} không hợp lệ (có {carPrefabList.carPrefabs.Length} xe). Dùng index 0");
+            carIndex = 0;
+        }
+        
+        NetworkObject prefab = carPrefabList.carPrefabs[carIndex];
 
         if (prefab == null)
         {
-            Debug.LogError($"[RacingCarSpawner] Không tìm thấy prefab cho carIndex {carIndex}");
+            Debug.LogError($"[RacingCarSpawner] Prefab tại index {carIndex} là null! Hãy kiểm tra CarPrefabList.asset");
             return;
         }
 
@@ -100,12 +118,12 @@ public class RacingCarSpawner : FusionCallbacksBase
 
         Debug.Log($"[RacingCarSpawner] ✅ Spawn thành công {prefab.name} cho Player {player} tại vị trí {pos}, HasInputAuthority={carObj.HasInputAuthority}");
 
-        // Gán camera cho local player
-        if (_runner.LocalPlayer == player && Camera.main != null)
+        // ✅ Register camera cho MultiCameraManager thay vì old CameraFollow
+        var camManager = MultiCameraManager.Instance;
+        if (camManager != null && carObj.GetComponent<CarController>() != null)
         {
-            var follow = Camera.main.GetComponent<CameraFollow>() ?? Camera.main.gameObject.AddComponent<CameraFollow>();
-            follow.SetTarget(carObj.transform);
-            Debug.Log($"[RacingCarSpawner] Camera assigned to Player {player}");
+            camManager.RegisterPlayerCar(player, carObj.GetComponent<CarController>());
+            Debug.Log($"[RacingCarSpawner] Registered camera for Player {player}");
         }
     }
 

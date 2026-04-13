@@ -2,10 +2,10 @@ using UnityEngine;
 using TMPro;
 
 /// <summary>
-/// Gắn vào từng item trên map
-/// Yêu cầu: Collider2D với Is Trigger = true
-/// Player cần có tag "Player" và component InventorySystem
+/// ✅ DEPRECATED: Old pickup system removed in favor of pure racing gameplay
 /// </summary>
+#pragma warning disable CS0649 // Field is never assigned
+
 [RequireComponent(typeof(Collider2D))]
 public class ItemPickup : MonoBehaviour
 {
@@ -88,3 +88,5 @@ public class ItemPickup : MonoBehaviour
             popupText.text = $"Bấm F để nhặt: {itemName}";
     }
 }
+
+#pragma warning restore CS0649

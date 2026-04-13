@@ -2,10 +2,10 @@ using UnityEngine;
 using Fusion;
 
 /// <summary>
-/// Quản lý logic inventory
-/// Gắn vào prefab Multiplayer (player)
+/// ✅ DEPRECATED: Old inventory system removed in favor of pure racing gameplay
+/// This script is no longer used but remains for backward compatibility
 /// </summary>
-public class InventorySystem : NetworkBehaviour
+public class InventorySystem : MonoBehaviour  // Changed from NetworkBehaviour to MonoBehaviour for compatibility
 {
     // ✅ Static Instance để InventoryUI tìm thấy dù player spawn muộn
     public static InventorySystem LocalInstance { get; private set; }
@@ -27,14 +27,11 @@ public class InventorySystem : NetworkBehaviour
         _slots = new GameObject[maxSlots];
     }
 
-    public override void Spawned()
+    private void OnEnable()
     {
-        // Chỉ set Instance cho player của chính mình
-        if (HasInputAuthority)
-        {
-            LocalInstance = this;
-            Debug.Log("[InventorySystem] Local instance sẵn sàng!");
-        }
+        // Set LocalInstance when enabled
+        LocalInstance = this;
+        Debug.Log("[InventorySystem] ✅ DEPRECATED - Not used in racing game");
     }
 
     private void OnDestroy()
@@ -44,20 +41,7 @@ public class InventorySystem : NetworkBehaviour
 
     private void Update()
     {
-        if (!HasInputAuthority) return;
-        HandleSlotInput();
-    }
-
-    private void HandleSlotInput()
-    {
-        for (int i = 0; i < maxSlots; i++)
-        {
-            if (Input.GetKeyDown(KeyCode.Alpha1 + i))
-            {
-                SelectSlot(i);
-                break;
-            }
-        }
+        // DEPRECATED: Not used in racing game
     }
 
     public bool AddItem(GameObject item)

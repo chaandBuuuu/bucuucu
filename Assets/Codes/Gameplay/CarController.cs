@@ -45,7 +45,7 @@ public class CarController : NetworkBehaviour
 
     public override void Spawned()
     {
-        _powerupInventory = GetComponent<PowerupInventory>() ?? gameObject.AddComponent<PowerupInventory>();
+        // ✅ DISABLED: _powerupInventory = GetComponent<PowerupInventory>() ?? gameObject.AddComponent<PowerupInventory>();
 
         _localVelocity   = Vector2.zero;
         _currentRotation = transform.rotation.eulerAngles.z;
@@ -131,8 +131,9 @@ public class CarController : NetworkBehaviour
     // ── Public API ───────────────────────────────────────────────────────────
     public void PickupPowerup(PowerupType type)
     {
-        if (_powerupInventory != null)
-            _powerupInventory.AddPowerup(type);
+        // ✅ DISABLED: Powerup system removed
+        // if (_powerupInventory != null)
+        //     _powerupInventory.AddPowerup(type);
     }
 
     public PowerupInventory GetPowerupInventory() => _powerupInventory;
