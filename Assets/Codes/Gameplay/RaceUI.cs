@@ -16,16 +16,16 @@ using System.Collections.Generic;
 public class RaceUI : MonoBehaviour
 {
     [Header("Race Info")]
-    [SerializeField] private TextMeshProUGUI timerText;
-    [SerializeField] private TextMeshProUGUI statusText;
-    [SerializeField] private TextMeshProUGUI speedText;
-    [SerializeField] private TextMeshProUGUI countdownText;  // ✅ Final countdown display
+[SerializeField] public TextMeshProUGUI timerText;
+[SerializeField] public TextMeshProUGUI statusText;
+[SerializeField] public TextMeshProUGUI speedText;
+[SerializeField] public TextMeshProUGUI countdownText;
 
-    [Header("Race End")]
-    [SerializeField] private TextMeshProUGUI raceEndText;
-    [SerializeField] private TextMeshProUGUI raceResultText;  // ✅ Rankings
-    [SerializeField] private Button          mainMenuButton;
-    [SerializeField] private Button          restartButton;
+[Header("Race End")]
+[SerializeField] public TextMeshProUGUI raceEndText;
+[SerializeField] public TextMeshProUGUI raceResultText;
+[SerializeField] public Button mainMenuButton;
+[SerializeField] public Button restartButton;
 
     private RaceManager   _raceManager;
     private CarController _localCar;
