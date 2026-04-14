@@ -75,6 +75,8 @@ MonoBehaviour:
   driftFriction: 0.92
   rotationSpeed: 180
   driftRotationMultiplier: 1.5
+  nameplateOffsetY: -1.5
+  nameplateFontSize: 4
   _IsDrifting: 0
   _LapsCompleted: 0
   _IsFinished: 0
@@ -196,8 +198,8 @@ SpriteRenderer:
   m_AutoUVMaxAngle: 89
   m_LightmapParameters: {fileID: 0}
   m_GlobalIlluminationMeshLod: 0
-  m_SortingLayerID: 0
-  m_SortingLayer: 0
+  m_SortingLayerID: -87939749
+  m_SortingLayer: 4
   m_SortingOrder: 10
   m_MaskInteraction: 0
   m_Sprite: {fileID: 1322821052197086858, guid: c172e6c0d21121741a622f1f01d212f3, type: 3}
