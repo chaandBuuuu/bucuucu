@@ -3,32 +3,36 @@ using TMPro;
 using Fusion;
 using UnityEngine.UI;
 using System.Collections;
+using System.Collections.Generic;
 
 /// <summary>
-/// FIX:
-///   - FindLocalCar() dùng Coroutine poll thay vì gọi FindObjectsByType mỗi frame
-///     → tránh CPU spike khi scene mới load và xe chưa spawn
-///   - Unsubscribe event trong OnDestroy để tránh memory leak
+/// ✅ UPDATED: Display finish-line based racing UI
+///   - Timer: Race countdown
+///   - Status: Running / Finished / Final Countdown
+///   - Speed: Current speed
+///   - Final Countdown: 10s để tính toán kết quả
+///   - Rankings: Final results
 /// </summary>
 public class RaceUI : MonoBehaviour
 {
     [Header("Race Info")]
-    [SerializeField] private TextMeshProUGUI lapText;
     [SerializeField] private TextMeshProUGUI timerText;
-    [SerializeField] private TextMeshProUGUI positionText;
+    [SerializeField] private TextMeshProUGUI statusText;
     [SerializeField] private TextMeshProUGUI speedText;
-
-    [Header("Powerup Display")]
-    [SerializeField] private TextMeshProUGUI powerupText;
-    [SerializeField] private Image           powerupIcon;
+    [SerializeField] private TextMeshProUGUI countdownText;  // ✅ Final countdown display
 
     [Header("Race End")]
     [SerializeField] private TextMeshProUGUI raceEndText;
+    [SerializeField] private TextMeshProUGUI raceResultText;  // ✅ Rankings
     [SerializeField] private Button          mainMenuButton;
     [SerializeField] private Button          restartButton;
 
     private RaceManager   _raceManager;
     private CarController _localCar;
+    private bool _raceStarted = false;
+    private bool _raceFinished = false;
+    private float _lastUIUpdateTime = 0f;
+    private const float UI_UPDATE_INTERVAL = 0.1f;  // ✅ Update UI every 100ms instead of every frame
 
     private void Start()
     {
@@ -36,33 +40,33 @@ public class RaceUI : MonoBehaviour
 
         if (_raceManager != null)
         {
-            _raceManager.OnLapComplete += OnLapComplete;
-            _raceManager.OnRaceEnd     += OnRaceEnd;
+            _raceManager.OnRaceStart += OnRaceStart;
+            _raceManager.OnPlayerFinish += OnPlayerFinish;
+            _raceManager.OnFinalRankings += OnFinalRankings;
+            _raceManager.OnRaceEnd += OnRaceEnd;
         }
 
         if (mainMenuButton != null) mainMenuButton.onClick.AddListener(OnMainMenuClicked);
         if (restartButton  != null) restartButton .onClick.AddListener(OnRestartClicked);
 
         if (raceEndText != null) raceEndText.gameObject.SetActive(false);
+        if (raceResultText != null) raceResultText.gameObject.SetActive(false);
+        if (countdownText != null) countdownText.gameObject.SetActive(false);
 
-        // FIX: Dùng coroutine poll thay vì FindObjectsByType mỗi frame
         StartCoroutine(FindLocalCarRoutine());
     }
 
     private void OnDestroy()
     {
-        // FIX: Unsubscribe để tránh memory leak khi UI bị destroy
         if (_raceManager != null)
         {
-            _raceManager.OnLapComplete -= OnLapComplete;
-            _raceManager.OnRaceEnd     -= OnRaceEnd;
+            _raceManager.OnRaceStart -= OnRaceStart;
+            _raceManager.OnPlayerFinish -= OnPlayerFinish;
+            _raceManager.OnFinalRankings -= OnFinalRankings;
+            _raceManager.OnRaceEnd -= OnRaceEnd;
         }
     }
 
-    /// <summary>
-    /// FIX: Poll mỗi 0.5 giây đến khi tìm được xe của local player.
-    /// Tránh FindObjectsByType chạy 60 lần/giây trong Update().
-    /// </summary>
     private IEnumerator FindLocalCarRoutine()
     {
         while (_localCar == null)
@@ -73,7 +77,7 @@ public class RaceUI : MonoBehaviour
                 if (car.HasInputAuthority)
                 {
                     _localCar = car;
-                    Debug.Log($"[RaceUI] Tìm thấy local car: {car.name}");
+                    Debug.Log($"[RaceUI] ✅ Found local car: {car.name}");
                     break;
                 }
             }
@@ -81,23 +85,73 @@ public class RaceUI : MonoBehaviour
         }
     }
 
-    private void Update()
+    private void OnRaceStart()
     {
-        if (_localCar != null)
-        {
-            UpdateLapUI();
-            UpdateSpeedUI();
-            UpdatePowerupUI();
-        }
-
-        UpdateTimerUI();
+        _raceStarted = true;
+        if (statusText != null)
+            statusText.text = "🚩 RACING...";
+        Debug.Log("[RaceUI] Race started!");
     }
 
-    private void UpdateLapUI()
+    private void OnPlayerFinish(CarController car)
     {
-        if (lapText == null || _raceManager == null) return;
-        int lap = _raceManager.GetLapCount(_localCar);
-        lapText.text = string.Format(RacingConstants.LAP_FORMAT, lap, RacingConstants.RACE_LAPS_TO_WIN);
+        if (car == _localCar)
+        {
+            if (statusText != null)
+                statusText.text = "✅ YOU FINISHED!";
+        }
+        Debug.Log($"[RaceUI] {car.name} finished!");
+    }
+
+    private void OnFinalRankings(List<(CarController, int, float, float)> rankings)
+    {
+        _raceFinished = true;
+        DisplayFinalResults(rankings);
+    }
+
+    private void OnRaceEnd(CarController winner)
+    {
+        if (raceEndText == null) return;
+        
+        bool isWinner = (winner == _localCar);
+        raceEndText.text  = isWinner ? "🏆 YOU WIN!" : $"🥈 {winner.name} won!";
+        raceEndText.color = isWinner ? Color.yellow : Color.cyan;
+        raceEndText.gameObject.SetActive(true);
+    }
+
+    private void DisplayFinalResults(List<(CarController car, int position, float time, float distance)> rankings)
+    {
+        if (raceResultText == null) return;
+
+        string results = "=== FINAL RESULTS ===\n";
+        for (int i = 0; i < rankings.Count; i++)
+        {
+            var (car, pos, time, dist) = rankings[i];
+            results += $"{pos}. {car.name} - {time:F2}s ({dist:F2}m away)\n";
+        }
+
+        raceResultText.text = results;
+        raceResultText.gameObject.SetActive(true);
+    }
+
+    private void Update()
+    {
+        if (_raceManager == null) return;
+
+        // ✅ OPTIMIZE: Throttle UI updates to reduce CPU usage
+        float timeSinceLastUpdate = Time.time - _lastUIUpdateTime;
+        if (timeSinceLastUpdate < UI_UPDATE_INTERVAL)
+            return;
+
+        _lastUIUpdateTime = Time.time;
+
+        UpdateTimerUI();
+        UpdateCountdownUI();
+
+        if (_localCar != null && !_raceFinished)
+        {
+            UpdateSpeedUI();
+        }
     }
 
     private void UpdateTimerUI()
@@ -106,63 +160,31 @@ public class RaceUI : MonoBehaviour
         float time    = _raceManager.GetRaceTime();
         int   minutes = (int)(time / 60f);
         int   seconds = (int)(time % 60f);
-        timerText.text = string.Format(RacingConstants.TIMER_FORMAT, minutes, seconds);
+        timerText.text = $"⏱️ {minutes:00}:{seconds:00}";
+    }
+
+    private void UpdateCountdownUI()
+    {
+        if (countdownText == null || _raceManager == null) return;
+
+        float finishCountdown = _raceManager.FinishCountdown;
+        if (finishCountdown >= 0f)
+        {
+            countdownText.gameObject.SetActive(true);
+            countdownText.text = $"⏳ Finish in {finishCountdown:F1}s";
+            countdownText.color = finishCountdown < 5f ? Color.yellow : Color.white;
+        }
+        else
+        {
+            countdownText.gameObject.SetActive(false);
+        }
     }
 
     private void UpdateSpeedUI()
     {
         if (speedText == null || _localCar == null) return;
-        speedText.text = string.Format(RacingConstants.SPEED_FORMAT, _localCar.GetSpeed());
+        speedText.text = $"💨 {_localCar.GetSpeed():F1} unit/s";
     }
-
-    private void UpdatePowerupUI()
-    {
-        if (powerupText == null || _localCar == null) return;
-
-        var inventory = _localCar.GetPowerupInventory();
-        if (inventory != null && inventory.HasPowerup())
-        {
-            var powerup = inventory.GetCurrentPowerup();
-            powerupText.text  = $"Powerup: {powerup}";
-            powerupText.color = GetPowerupColor(powerup.Value);
-        }
-        else
-        {
-            powerupText.text  = "No Powerup";
-            powerupText.color = Color.white;
-        }
-    }
-
-    private void OnLapComplete(CarController car, int lap)
-    {
-        if (_localCar == null || car != _localCar) return;
-        if (lapText == null) return;
-        lapText.color = Color.yellow;
-        Invoke(nameof(ResetLapColor), 0.5f);
-    }
-
-    private void ResetLapColor()
-    {
-        if (lapText != null) lapText.color = Color.white;
-    }
-
-    private void OnRaceEnd(CarController winner)
-    {
-        if (raceEndText == null) return;
-        bool isWinner = (winner == _localCar);
-        raceEndText.text  = isWinner ? "YOU WIN!" : $"{winner.name} thắng!";
-        raceEndText.color = isWinner ? Color.green : Color.red;
-        raceEndText.gameObject.SetActive(true);
-    }
-
-    private Color GetPowerupColor(PowerupType type) => type switch
-    {
-        PowerupType.Shield     => Color.cyan,
-        PowerupType.Gun        => Color.yellow,
-        PowerupType.SpeedBoost => Color.green,
-        PowerupType.Trap       => Color.red,
-        _                      => Color.white
-    };
 
     private void OnMainMenuClicked()
         => UnityEngine.SceneManagement.SceneManager.LoadScene("Menu");

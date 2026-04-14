@@ -28,12 +28,17 @@ public partial class FusionNetworkManager : FusionCallbacksBase
     // Lưu lựa chọn xe
     private readonly Dictionary<PlayerRef, int> _playerCarChoices = new Dictionary<PlayerRef, int>();
 
+    // ✅ NEW: Session/Room management
+    private readonly List<SessionInfo> _availableSessions = new List<SessionInfo>();
+    private string _storedPlayerName = "";  // Store player name before joining
+
     public NetworkRunner Runner { get; private set; }
 
     public event Action OnConnectedEvent;
     public event Action<string> OnDisconnectedEvent;
     public event Action OnJoinedSessionEvent;
     public event Action<string> OnJoinFailedEvent;
+    public event Action<List<SessionInfo>> OnSessionListUpdatedEvent;  // ✅ NEW
 
     private void Awake()
     {
@@ -83,15 +88,38 @@ public partial class FusionNetworkManager : FusionCallbacksBase
         RegisterPlayerCarChoice(player, carIndex);
     }
 
-    // ================== SESSION ==================
+    // ================== SESSION/ROOM MANAGEMENT ==================
+    public List<SessionInfo> GetAvailableSessions()
+    {
+        return new List<SessionInfo>(_availableSessions);
+    }
+
     public async Task CreateSession(string sessionName)
     {
+        // Store player name for later use
+        if (!string.IsNullOrEmpty(_storedPlayerName))
+        {
+            Debug.Log($"[FusionNetworkManager] Creating session '{sessionName}' with player '{_storedPlayerName}'");
+        }
+
         await StartRunner(GameMode.Host, sessionName);
     }
 
     public async Task JoinSession(string sessionName)
     {
         await StartRunner(GameMode.Client, sessionName);
+    }
+
+    // ✅ NEW: Store player name before joining
+    public void SetStoredPlayerName(string name)
+    {
+        _storedPlayerName = name;
+        Debug.Log($"[FusionNetworkManager] Stored player name: {name}");
+    }
+
+    public string GetStoredPlayerName()
+    {
+        return _storedPlayerName;
     }
 
     private async Task StartRunner(GameMode mode, string sessionName)
@@ -146,4 +174,19 @@ public partial class FusionNetworkManager : FusionCallbacksBase
 
     public override void OnShutdown(NetworkRunner runner, ShutdownReason reason) 
         => Runner = null;
+
+    // ✅ NEW: Session list update callback (called when available sessions change)
+    public override void OnSessionListUpdated(NetworkRunner runner, List<SessionInfo> sessionList)
+    {
+        _availableSessions.Clear();
+        _availableSessions.AddRange(sessionList);
+
+        Debug.Log($"[FusionNetworkManager] Session list updated: {sessionList.Count} sessions available");
+        foreach (var session in sessionList)
+        {
+            Debug.Log($"  - {session.Name} ({session.PlayerCount}/{session.MaxPlayers} players)");
+        }
+
+        OnSessionListUpdatedEvent?.Invoke(new List<SessionInfo>(_availableSessions));
+    }
 }

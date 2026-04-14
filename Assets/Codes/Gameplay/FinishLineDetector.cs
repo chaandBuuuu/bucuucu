@@ -42,7 +42,9 @@ public class FinishLineDetector : MonoBehaviour
         }
 
         _lastLapTime[car] = now;
-        raceManager.RegisterLapCompletion(car);
+        
+        // ✅ NEW: Call new method for finish line crossing
+        raceManager.RegisterFinishCrossing(car);
         Debug.Log($"[FinishLineDetector] {car.name} qua vạch đích");
     }
 

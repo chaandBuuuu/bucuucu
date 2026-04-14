@@ -1,5 +1,6 @@
 using UnityEngine;
 using Fusion;
+using TMPro;
 
 [RequireComponent(typeof(Rigidbody2D))]
 public class CarController : NetworkBehaviour
@@ -14,9 +15,14 @@ public class CarController : NetworkBehaviour
     [SerializeField] private float rotationSpeed           = RacingConstants.CAR_ROTATION_SPEED;
     [SerializeField] private float driftRotationMultiplier = RacingConstants.CAR_DRIFT_ROTATION_MULTIPLIER;
 
+    [Header("Player Nameplate")]
+    [SerializeField] private float nameplateOffsetY = -1.5f;  // Vị trí dưới xe
+    [SerializeField] private float nameplateFontSize = 4f;
+
     private Rigidbody2D      _rb;
     private SpriteRenderer   _spriteRenderer;
     private PowerupInventory _powerupInventory;
+    private TextMeshPro      _nameplateText;  // ✅ Tên người chơi
 
     // ── Networked state ──────────────────────────────────────────────────────
     [Networked] public  bool    IsDrifting    { get; private set; }
@@ -51,6 +57,9 @@ public class CarController : NetworkBehaviour
         _currentRotation = transform.rotation.eulerAngles.z;
         SpeedMultiplier  = 1f;
 
+        // ✅ NEW: Tạo nameplate cho người chơi
+        CreatePlayerNameplate();
+
         // Authority setup cho Rigidbody
         if (HasInputAuthority)
         {
@@ -65,6 +74,39 @@ public class CarController : NetworkBehaviour
         }
     }
 
+    /// <summary>
+    /// ✅ NEW: Tạo floating nameplate dưới xe để hiển thị tên người chơi
+    /// </summary>
+    private void CreatePlayerNameplate()
+    {
+        if (Object == null) return;
+
+        // Lấy tên người chơi từ FusionNetworkManager
+        string playerName = "Player";
+        if (FusionNetworkManager.Instance != null)
+        {
+            playerName = FusionNetworkManager.Instance.GetPlayerName(Object.InputAuthority);
+        }
+
+        // Tạo GameObject con cho nameplate
+        GameObject nameplateGO = new GameObject("Nameplate");
+        nameplateGO.transform.SetParent(transform);
+        nameplateGO.transform.localPosition = new Vector3(0, nameplateOffsetY, 0);
+
+        // Thêm TextMeshPro
+        _nameplateText = nameplateGO.AddComponent<TextMeshPro>();
+        _nameplateText.text = playerName;
+        _nameplateText.alignment = TextAlignmentOptions.Center;
+        _nameplateText.fontSize = nameplateFontSize;
+        _nameplateText.color = Color.white;
+
+        // ✅ Use TextMeshPro's built-in outline (no need for separate component)
+        _nameplateText.outlineWidth = 0.2f;
+        _nameplateText.outlineColor = Color.black;
+
+        Debug.Log($"[CarController] ✅ Created nameplate: {playerName}");
+    }
+
     public override void FixedUpdateNetwork()
     {
         if (IsFinished) return;
@@ -76,20 +118,23 @@ public class CarController : NetworkBehaviour
             _rb.linearVelocity = Vector2.zero;
         }
 
-        // ====================== FIX CHÍNH ======================
-        // Server + Owner đều simulate movement (giống LobbyPlayerController)
+        // ✅ OPTIMIZE: Get input once per frame
         if (GetInput(out NetworkInputData input))
         {
             HandleMovement(input);
             HandlePowerup(input);
         }
 
-        // Chỉ apply velocity trên máy đang simulate (owner + server)
+        // ✅ Only apply velocity on simulating machine (owner + server)
         if (HasInputAuthority || HasStateAuthority)
         {
-            _rb.linearVelocity = _localVelocity;
+            // ✅ OPTIMIZE: Only update rigidbody if velocity changed significantly
+            Vector2 newVelocity = _localVelocity;
+            if (Vector2.Distance(_rb.linearVelocity, newVelocity) > 0.01f)
+            {
+                _rb.linearVelocity = newVelocity;
+            }
         }
-        // =======================================================
     }
 
     private void HandleMovement(NetworkInputData input)
