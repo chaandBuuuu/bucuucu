@@ -2,6 +2,7 @@
 using UnityEngine;
 using UnityEditor;
 using UnityEngine.UI;
+using UnityEngine.EventSystems;
 using TMPro;
 using Fusion;
 using System.IO;
@@ -125,6 +126,15 @@ public class RacingGameAutoSetup : EditorWindow
             Undo.RegisterCreatedObjectUndo(go, "Create InputHandler (Menu)");
         }
 
+        // ── EventSystem (for UI interaction) ─────────────────────────────────
+        if (FindAnyObjectByType<EventSystem>() == null)
+        {
+            var eventSysGO = new GameObject("EventSystem");
+            eventSysGO.AddComponent<EventSystem>();
+            eventSysGO.AddComponent<StandaloneInputModule>();
+            Undo.RegisterCreatedObjectUndo(eventSysGO, "Create EventSystem (Menu)");
+        }
+
         // ── Menu Canvas ───────────────────────────────────────────────────────
         if (GameObject.Find("MenuCanvas") == null)
         {
@@ -223,6 +233,15 @@ public class RacingGameAutoSetup : EditorWindow
 
         CreatePrefabsFolder();
         CreateCarPrefabs();
+
+        // ── EventSystem (for UI interaction) ─────────────────────────────────
+        if (FindAnyObjectByType<EventSystem>() == null)
+        {
+            var eventSysGO = new GameObject("EventSystem");
+            eventSysGO.AddComponent<EventSystem>();
+            eventSysGO.AddComponent<StandaloneInputModule>();
+            Undo.RegisterCreatedObjectUndo(eventSysGO, "Create EventSystem (Lobby)");
+        }
 
         // ── FusionNetworkManager ──────────────────────────────────────────────
         // Lobby scene cũng cần FNM vì nó là scene đầu tiên Fusion load vào
@@ -417,6 +436,16 @@ public class RacingGameAutoSetup : EditorWindow
 
         CreatePrefabsFolder();
         CreateCarPrefabs();
+        
+        // ── EventSystem (for UI interaction) ─────────────────────────────────
+        if (FindAnyObjectByType<EventSystem>() == null)
+        {
+            var eventSysGO = new GameObject("EventSystem");
+            eventSysGO.AddComponent<EventSystem>();
+            eventSysGO.AddComponent<StandaloneInputModule>();
+            Undo.RegisterCreatedObjectUndo(eventSysGO, "Create EventSystem (Racing)");
+        }
+        
         CreateRaceManager();
         CreateTrackObjects();
         CreateRacingCarSpawner();
@@ -675,7 +704,7 @@ public class RacingGameAutoSetup : EditorWindow
         tRect.anchorMin = Vector2.zero; tRect.anchorMax = Vector2.one;
         tRect.offsetMin = new Vector2(10,0); tRect.offsetMax = new Vector2(-10,0);
 
-        field.textViewport   = tRect;
+        field.textViewport   = null;  // ✅ FIX: Leave null, don't set to text RectTransform
         field.textComponent  = textComp;
         field.placeholder    = placeholder;
         field.characterLimit = 16;

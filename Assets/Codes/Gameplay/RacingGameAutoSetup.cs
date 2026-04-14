@@ -164,17 +164,36 @@ public class RacingGameAutoSetup : MonoBehaviour
 
         canvasObj.AddComponent<UnityEngine.UI.GraphicRaycaster>();
 
-        CreateUIText(canvasObj, "LapCounter",  new Vector2(-300f, -30f), "Vòng: 0/4",      TextAlignmentOptions.Left);
-        CreateUIText(canvasObj, "Timer",       new Vector2(   0f, -30f), "Thời gian: 0:00", TextAlignmentOptions.Center);
-        CreateUIText(canvasObj, "SpeedDisplay",new Vector2( 300f, -30f), "Speed: 0.0",      TextAlignmentOptions.Right);
-        CreateUIText(canvasObj, "PowerupDisplay",new Vector2(0f, -80f),  "No Powerup",      TextAlignmentOptions.Center);
+        var lapCounterText     = CreateUIText(canvasObj, "LapCounter",      new Vector2(-300f, -30f), "Vòng: 0/4",       TextAlignmentOptions.Left);
+        var timerText          = CreateUIText(canvasObj, "Timer",           new Vector2(   0f, -30f), "Thời gian: 0:00", TextAlignmentOptions.Center);
+        var speedText          = CreateUIText(canvasObj, "SpeedDisplay",    new Vector2( 300f, -30f), "Speed: 0.0",      TextAlignmentOptions.Right);
+        var powerupDisplayText = CreateUIText(canvasObj, "PowerupDisplay",  new Vector2(0f, -80f),   "No Powerup",      TextAlignmentOptions.Center);
 
-        // Tạo Race End text (ẩn ban đầu)
-        var endObj  = CreateUIText(canvasObj, "RaceEndText", Vector2.zero, "", TextAlignmentOptions.Center);
-        endObj.fontSize = 60;
-        endObj.gameObject.SetActive(false);
+        // ✅ Create and reference main UI texts
+        var raceEndTextObj  = CreateUIText(canvasObj, "RaceEndText", Vector2.zero, "", TextAlignmentOptions.Center);
+        raceEndTextObj.fontSize = 60;
+        raceEndTextObj.gameObject.SetActive(false);
 
-        Debug.Log("[RacingGameAutoSetup] ✅ RaceUI Canvas tạo xong.");
+        var raceResultTextObj = CreateUIText(canvasObj, "RaceResultText", new Vector2(0f, 100f), "", TextAlignmentOptions.TopLeft);
+        raceResultTextObj.fontSize = 20;
+        raceResultTextObj.gameObject.SetActive(false);
+
+        // ✅ Tạo Buttons
+        var mainMenuBtn = CreateUIButton(canvasObj, "MainMenuBtn", new Vector2(-200f, -300f), "📋 Menu");
+        var restartBtn  = CreateUIButton(canvasObj, "RestartBtn",  new Vector2( 200f, -300f), "🔄 Restart");
+
+        // ✅ Attach RaceUI script và wire buttons (direct assignment)
+        var raceUI = canvasObj.AddComponent<RaceUI>();
+        raceUI.timerText       = timerText;
+        raceUI.statusText      = speedText;  // Re-using speed text for status
+        raceUI.speedText       = speedText;
+        raceUI.countdownText   = powerupDisplayText;
+        raceUI.raceEndText     = raceEndTextObj;
+        raceUI.raceResultText  = raceResultTextObj;
+        raceUI.mainMenuButton  = mainMenuBtn;
+        raceUI.restartButton   = restartBtn;
+
+        Debug.Log("[RacingGameAutoSetup] ✅ RaceUI Canvas tạo xong (với buttons + RaceUI script).");
     }
 
     private TextMeshProUGUI CreateUIText(GameObject parent, string name,
@@ -196,6 +215,41 @@ public class RacingGameAutoSetup : MonoBehaviour
         tmp.color     = Color.white;
         tmp.alignment = alignment;
         return tmp;
+    }
+
+    private UnityEngine.UI.Button CreateUIButton(GameObject parent, string name,
+                                                  Vector2 anchoredPos, string buttonText)
+    {
+        var obj = new GameObject(name);
+        obj.transform.SetParent(parent.transform, false);
+
+        var rt = obj.AddComponent<RectTransform>();
+        rt.anchorMin        = new Vector2(0.5f, 0f);
+        rt.anchorMax        = new Vector2(0.5f, 0f);
+        rt.anchoredPosition = anchoredPos;
+        rt.sizeDelta        = new Vector2(300f, 60f);
+
+        var img = obj.AddComponent<UnityEngine.UI.Image>();
+        img.color = new Color(0.2f, 0.2f, 0.2f);
+
+        var btn = obj.AddComponent<UnityEngine.UI.Button>();
+
+        // Text child
+        var textObj = new GameObject("Text");
+        textObj.transform.SetParent(obj.transform, false);
+        var textRect = textObj.AddComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = Vector2.zero;
+        textRect.offsetMax = Vector2.zero;
+
+        var tmp = textObj.AddComponent<TextMeshProUGUI>();
+        tmp.text      = buttonText;
+        tmp.fontSize  = 28;
+        tmp.color     = Color.white;
+        tmp.alignment = TextAlignmentOptions.Center;
+
+        return btn;
     }
 
     private Color GetPowerupColor(PowerupType type) => type switch

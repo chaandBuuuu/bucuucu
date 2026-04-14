@@ -96,6 +96,12 @@ public partial class FusionNetworkManager : FusionCallbacksBase
 
     public async Task CreateSession(string sessionName)
     {
+        // ✅ NEW: Stop discovery before creating
+        if (SessionDiscoveryManager.Instance != null)
+        {
+            SessionDiscoveryManager.Instance.StopDiscovery();
+        }
+
         // Store player name for later use
         if (!string.IsNullOrEmpty(_storedPlayerName))
         {
@@ -107,6 +113,12 @@ public partial class FusionNetworkManager : FusionCallbacksBase
 
     public async Task JoinSession(string sessionName)
     {
+        // ✅ NEW: Stop discovery before joining
+        if (SessionDiscoveryManager.Instance != null)
+        {
+            SessionDiscoveryManager.Instance.StopDiscovery();
+        }
+
         await StartRunner(GameMode.Client, sessionName);
     }
 
@@ -158,6 +170,12 @@ public partial class FusionNetworkManager : FusionCallbacksBase
 
     public void LeaveSession()
     {
+        // ✅ NEW: Stop discovery when leaving
+        if (SessionDiscoveryManager.Instance != null)
+        {
+            SessionDiscoveryManager.Instance.StopDiscovery();
+        }
+
         if (Runner != null) Runner.Shutdown();
     }
 

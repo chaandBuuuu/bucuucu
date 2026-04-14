@@ -56,11 +56,20 @@ public class GameLobbyUI : MonoBehaviour
             refreshButton.onClick.AddListener(OnRefreshClicked);
 
         RegisterEvents();
+
+        // ✅ NEW: Start session discovery
+        StartSessionDiscovery();
     }
 
     private void OnDestroy()
     {
         UnregisterEvents();
+
+        // ✅ NEW: Stop session discovery
+        if (SessionDiscoveryManager.Instance != null)
+        {
+            SessionDiscoveryManager.Instance.StopDiscovery();
+        }
     }
 
     private void RegisterEvents()
@@ -75,6 +84,19 @@ public class GameLobbyUI : MonoBehaviour
         if (FusionNetworkManager.Instance == null) return;
         FusionNetworkManager.Instance.OnJoinedSessionEvent -= OnJoinedSession;
         FusionNetworkManager.Instance.OnJoinFailedEvent -= OnJoinFailed;
+    }
+
+    /// ✅ NEW: Initialize session discovery to get available rooms
+    private async void StartSessionDiscovery()
+    {
+        if (SessionDiscoveryManager.Instance == null)
+        {
+            Debug.LogWarning("[GameLobbyUI] SessionDiscoveryManager not found!");
+            return;
+        }
+
+        UpdateStatus("🔍 Đang tìm phòng khả dụng...");
+        await SessionDiscoveryManager.Instance.StartDiscovery();
     }
 
     private void OnNameInputSubmitted()
@@ -123,6 +145,12 @@ public class GameLobbyUI : MonoBehaviour
         if (FusionNetworkManager.Instance != null)
         {
             FusionNetworkManager.Instance.SetStoredPlayerName(_currentPlayerName);
+        }
+
+        // ✅ NEW: Stop discovery before hosting
+        if (SessionDiscoveryManager.Instance != null)
+        {
+            SessionDiscoveryManager.Instance.StopDiscovery();
         }
 
         string sessionName = _currentPlayerName + "_Room_" + Random.Range(1000, 9999);

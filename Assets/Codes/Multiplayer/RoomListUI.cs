@@ -51,6 +51,13 @@ public class RoomListUI : MonoBehaviour
 
     private void RegisterSessionUpdateCallbacks()
     {
+        // ✅ UPDATED: Listen to SessionDiscoveryManager instead
+        if (SessionDiscoveryManager.Instance != null)
+        {
+            SessionDiscoveryManager.Instance.OnSessionListUpdatedEvent += OnDiscoverySessionListUpdated;
+        }
+
+        // Also listen to FusionNetworkManager for join events
         if (FusionNetworkManager.Instance != null)
         {
             FusionNetworkManager.Instance.OnJoinedSessionEvent += OnJoinedSession;
@@ -60,6 +67,11 @@ public class RoomListUI : MonoBehaviour
 
     private void UnregisterSessionUpdateCallbacks()
     {
+        if (SessionDiscoveryManager.Instance != null)
+        {
+            SessionDiscoveryManager.Instance.OnSessionListUpdatedEvent -= OnDiscoverySessionListUpdated;
+        }
+
         if (FusionNetworkManager.Instance != null)
         {
             FusionNetworkManager.Instance.OnJoinedSessionEvent -= OnJoinedSession;
@@ -67,25 +79,51 @@ public class RoomListUI : MonoBehaviour
         }
     }
 
+    /// ✅ NEW: Called when SessionDiscoveryManager updates the session list
+    private void OnDiscoverySessionListUpdated(List<SessionInfo> sessions)
+    {
+        Debug.Log($"[RoomListUI] Received updated session list: {sessions.Count} sessions");
+        RefreshRoomList(sessions);
+    }
+
     private void OnRefreshClicked()
     {
         if (statusText != null)
             statusText.text = "🔄 Đang tải danh sách phòng...";
 
+        // ✅ UPDATED: Get sessions from SessionDiscoveryManager
+        if (SessionDiscoveryManager.Instance == null)
+        {
+            if (statusText != null)
+                statusText.text = "❌ SessionDiscoveryManager chưa khởi tạo!";
+            return;
+        }
+
+        var sessions = SessionDiscoveryManager.Instance.GetDiscoveredSessions();
+        RefreshRoomList(sessions);
+    }
+
+    /// ✅ NEW: Helper to refresh room list display
+    private void RefreshRoomList(List<SessionInfo> sessions)
+    {
         // Clear existing items
         foreach (var item in _roomItems)
         {
             Destroy(item.gameObject);
         }
         _roomItems.Clear();
+        _selectedRoom = null;
 
-        // ✅ Get cached sessions from FusionNetworkManager
-        var sessions = FusionNetworkManager.Instance.GetAvailableSessions();
-        
+        if (statusText != null)
+            statusText.text = "🔄 Đang tải danh sách phòng...";
+
+        if (joinButton != null)
+            joinButton.interactable = false;
+
         if (sessions == null || sessions.Count == 0)
         {
             if (statusText != null)
-                statusText.text = "📭 Chưa có phòng nào (hoặc Photon chưa kết nối)";
+                statusText.text = "📭 Chưa có phòng nào";
             return;
         }
 
@@ -147,6 +185,12 @@ public class RoomListUI : MonoBehaviour
 
         if (statusText != null)
             statusText.text = $"🚪 Đang vào {_selectedRoom.SessionName}...";
+
+        // ✅ UPDATED: Stop discovery before joining
+        if (SessionDiscoveryManager.Instance != null)
+        {
+            SessionDiscoveryManager.Instance.StopDiscovery();
+        }
 
         await FusionNetworkManager.Instance.JoinSession(_selectedRoom.SessionName);
     }
