@@ -34,6 +34,7 @@ public class CarController : NetworkBehaviour
     private Vector2 _localVelocity   = Vector2.zero;
     private float   _currentRotation = 0f;
     private bool    _isDrifting      = false;
+    private bool    _inputEnabled    = true;  // ✅ NEW: Lock/unlock input
 
     public event System.Action<int> OnLapCompleted;
     public event System.Action      OnRaceFinished;
@@ -118,6 +119,18 @@ public class CarController : NetworkBehaviour
             _rb.linearVelocity = Vector2.zero;
         }
 
+        // ✅ NEW: Check if input is enabled
+        if (!_inputEnabled)
+        {
+            // Apply friction only, no input
+            _localVelocity *= friction;
+            if (HasInputAuthority || HasStateAuthority)
+            {
+                _rb.linearVelocity = _localVelocity;
+            }
+            return;
+        }
+
         // ✅ OPTIMIZE: Get input once per frame
         if (GetInput(out NetworkInputData input))
         {
@@ -179,6 +192,13 @@ public class CarController : NetworkBehaviour
         // ✅ DISABLED: Powerup system removed
         // if (_powerupInventory != null)
         //     _powerupInventory.AddPowerup(type);
+    }
+
+    /// ✅ NEW: Enable/disable input
+    public void SetInputEnabled(bool enabled)
+    {
+        _inputEnabled = enabled;
+        Debug.Log($"[CarController] Input {(enabled ? "enabled" : "disabled")} for {gameObject.name}");
     }
 
     public PowerupInventory GetPowerupInventory() => _powerupInventory;

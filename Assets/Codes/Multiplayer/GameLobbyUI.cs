@@ -192,6 +192,18 @@ public class GameLobbyUI : MonoBehaviour
         return true;
     }
 
+    /// ✅ NEW: Public method for RoomListUI to get current player name
+    public string GetCurrentPlayerName()
+    {
+        return _currentPlayerName;
+    }
+
+    /// ✅ NEW: Public method for RoomListUI to validate player name
+    public bool ValidatePlayerNamePublic()
+    {
+        return ValidatePlayerName();
+    }
+
     private async void OnHostClicked()
     {
         if (!ValidatePlayerName()) return;
@@ -250,9 +262,27 @@ public class GameLobbyUI : MonoBehaviour
     private void OnJoinedSession()
     {
         UpdateStatus("✅ Đã vào phòng! Chuyển sang Lobby...");
-        // Ẩn canvas menu
+        
+        // ✅ UPDATED: Hide menu canvas after delay (let UI finish processing)
+        StartCoroutine(HideMenuCoroutine());
+    }
+    
+    /// ✅ NEW: Hide menu canvas with delay to avoid input conflicts
+    private System.Collections.IEnumerator HideMenuCoroutine()
+    {
+        // Clear input focus from menu
+        if (playerNameInput != null)
+            playerNameInput.DeactivateInputField();
+        
+        // Wait for UI to finish
+        yield return new WaitForSeconds(0.3f);
+        
+        // Hide canvas to reveal game
         if (canvasToHide != null)
+        {
             canvasToHide.SetActive(false);
+            Debug.Log("[GameLobbyUI] Menu canvas hidden");
+        }
     }
 
     private void OnJoinFailed(string reason)

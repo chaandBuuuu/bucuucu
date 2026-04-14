@@ -181,6 +181,16 @@ public class RoomListUI : MonoBehaviour
             return;
         }
 
+        // ✅ NEW: Validate player name before joining
+        var lobbyUI = FindObjectOfType<GameLobbyUI>();
+        if (lobbyUI != null && !lobbyUI.ValidatePlayerNamePublic())
+        {
+            if (statusText != null)
+                statusText.text = "❌ Vui lòng nhập tên người chơi!";
+            Debug.LogError("[RoomListUI] Cannot join without valid player name");
+            return;
+        }
+
         SetButtonsInteractable(false);
 
         if (statusText != null)
@@ -190,6 +200,16 @@ public class RoomListUI : MonoBehaviour
         if (SessionDiscoveryManager.Instance != null)
         {
             SessionDiscoveryManager.Instance.StopDiscovery();
+        }
+
+        // ✅ NEW: Store player name before joining
+        if (lobbyUI != null)
+        {
+            string playerName = lobbyUI.GetCurrentPlayerName();
+            if (FusionNetworkManager.Instance != null)
+            {
+                FusionNetworkManager.Instance.SetStoredPlayerName(playerName);
+            }
         }
 
         await FusionNetworkManager.Instance.JoinSession(_selectedRoom.SessionName);
