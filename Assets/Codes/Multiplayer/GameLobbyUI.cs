@@ -1,6 +1,8 @@
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
+using Fusion;
+using System.Reflection;
 
 /// <summary>
 /// ✅ UPDATED: Main menu with player name input + room listing
@@ -87,16 +89,69 @@ public class GameLobbyUI : MonoBehaviour
     }
 
     /// ✅ NEW: Initialize session discovery to get available rooms
+    /// ✅ AUTO-CREATES SessionDiscoveryManager if missing
     private async void StartSessionDiscovery()
     {
+        // ✅ NEW: Auto-create SessionDiscoveryManager if not exists
         if (SessionDiscoveryManager.Instance == null)
         {
-            Debug.LogWarning("[GameLobbyUI] SessionDiscoveryManager not found!");
+            Debug.Log("[GameLobbyUI] SessionDiscoveryManager not found, auto-creating...");
+            GameObject discoveryGO = new GameObject("SessionDiscovery");
+            SessionDiscoveryManager manager = discoveryGO.AddComponent<SessionDiscoveryManager>();
+            
+            // Try to get NetworkRunner prefab from FusionNetworkManager
+            TryAssignRunnerPrefab(manager);
+            
+            Debug.Log("[GameLobbyUI] ✅ SessionDiscoveryManager auto-created!");
+        }
+
+        if (SessionDiscoveryManager.Instance == null)
+        {
+            UpdateStatus("❌ SessionDiscoveryManager initialization failed!");
             return;
         }
 
         UpdateStatus("🔍 Đang tìm phòng khả dụng...");
         await SessionDiscoveryManager.Instance.StartDiscovery();
+    }
+
+    /// ✅ NEW: Helper to assign NetworkRunner prefab to SessionDiscoveryManager
+    private void TryAssignRunnerPrefab(SessionDiscoveryManager manager)
+    {
+        try
+        {
+            // Try to get runner prefab from FusionNetworkManager
+            if (FusionNetworkManager.Instance != null)
+            {
+                var field = typeof(FusionNetworkManager)
+                    .GetField("runnerPrefab", 
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                
+                if (field != null)
+                {
+                    var prefab = field.GetValue(FusionNetworkManager.Instance) as NetworkRunner;
+                    if (prefab != null)
+                    {
+                        var managerField = typeof(SessionDiscoveryManager)
+                            .GetField("discoveryRunnerPrefab", 
+                                System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        
+                        if (managerField != null)
+                        {
+                            managerField.SetValue(manager, prefab);
+                            Debug.Log("[GameLobbyUI] ✅ Assigned NetworkRunner prefab to SessionDiscoveryManager");
+                            return;
+                        }
+                    }
+                }
+            }
+
+            Debug.LogWarning("[GameLobbyUI] ⚠️ Could not assign NetworkRunner prefab, will search runtime");
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[GameLobbyUI] Exception assigning prefab: {ex.Message}");
+        }
     }
 
     private void OnNameInputSubmitted()
