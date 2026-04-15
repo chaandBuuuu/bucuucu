@@ -29,11 +29,13 @@ public class GameStartController : NetworkBehaviour
     }
 
     private void OnStartRaceClicked()
-    {
-        if (!HasStateAuthority || RaceStarting) return;
+{
+    Debug.Log($"[GameStartController] Clicked! HasStateAuthority={HasStateAuthority}, RaceStarting={RaceStarting}");
+    
+    if (!HasStateAuthority || RaceStarting) return;
 
-        Debug.Log("[GameStartController] Host bắt đầu → Load Racing Scene");
-        RaceStarting = true;
-        Runner.LoadScene(SceneRef.FromIndex(2));
-    }
+    Debug.Log("[GameStartController] Host bắt đầu → Load Racing Scene");
+    RaceStarting = true;
+    Runner.LoadScene(SceneRef.FromIndex(2));
+}
 }
