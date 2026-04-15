@@ -207,4 +207,9 @@ public partial class FusionNetworkManager : FusionCallbacksBase
 
         OnSessionListUpdatedEvent?.Invoke(new List<SessionInfo>(_availableSessions));
     }
+    public void RegisterCallbacks(INetworkRunnerCallbacks callbacks)
+{
+    if (Runner != null)
+        Runner.AddCallbacks(callbacks);
+}
 }
