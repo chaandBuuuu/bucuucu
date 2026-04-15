@@ -49,16 +49,15 @@ public class SessionDiscoveryManager : MonoBehaviour, INetworkRunnerCallbacks
 {
     if (_isDiscoveryActive)
     {
-        Debug.Log("[SessionDiscoveryManager] Discovery đang chạy rồi");
+        Debug.Log("[SessionDiscoveryManager] Discovery đang chạy...");
         return;
     }
 
-    Debug.Log("[SessionDiscoveryManager] Bắt đầu tìm phòng...");
+    Debug.Log("[SessionDiscoveryManager] 🔍 Bắt đầu tìm phòng (Lobby Mode)...");
 
     _isDiscoveryActive = true;
     _discoveredSessions.Clear();
 
-    // Tạo discovery runner nếu chưa có
     if (_discoveryRunner == null)
     {
         _discoveryRunner = Instantiate(discoveryRunnerPrefab);
@@ -67,12 +66,12 @@ public class SessionDiscoveryManager : MonoBehaviour, INetworkRunnerCallbacks
 
     _discoveryRunner.AddCallbacks(this);
 
-    // ✅ CODE ĐÃ SỬA (không còn EnableClientSessionList)
+    // ================== CODE ĐÃ SỬA HOÀN CHỈNH ==================
     var args = new StartGameArgs
     {
-        GameMode     = GameMode.Client,     // Dùng Client để discovery
-        SessionName  = null,                // Quan trọng: null thay vì ""
-        PlayerCount  = 1,
+        GameMode     = GameMode.Client,
+        SessionName  = "",           // Phải để "" (không null)
+        PlayerCount  = 0,            // 0 = chỉ discovery
         SceneManager = _discoveryRunner.GetComponent<NetworkSceneManagerDefault>() 
                      ?? _discoveryRunner.gameObject.AddComponent<NetworkSceneManagerDefault>()
     };
@@ -81,17 +80,18 @@ public class SessionDiscoveryManager : MonoBehaviour, INetworkRunnerCallbacks
 
     if (!result.Ok)
     {
-        Debug.LogError($"[SessionDiscoveryManager] Discovery failed: {result.ShutdownReason}");
+        Debug.LogWarning($"[SessionDiscoveryManager] StartGame failed: {result.ShutdownReason}");
         _isDiscoveryActive = false;
-        OnDiscoveryFailed?.Invoke(result.ShutdownReason.ToString());
         StopDiscovery();
+        return;
     }
-    else
-    {
-        Debug.Log("[SessionDiscoveryManager] ✅ Discovery runner khởi động thành công! Đang chờ danh sách phòng...");
-        OnDiscoveryConnected?.Invoke();
-    }
-}   
+
+    // ✅ PHẦN QUAN TRỌNG NHẤT: Vào Lobby để nhận danh sách phòng
+    _discoveryRunner.JoinSessionLobby(SessionLobby.ClientServer);
+
+    Debug.Log("[SessionDiscoveryManager] ✅ Đã vào Lobby! Đang chờ danh sách phòng...");
+    OnDiscoveryConnected?.Invoke();
+}
 
     /// <summary>
     /// Stop discovery and shut down the runner
