@@ -45,6 +45,7 @@ public class GameStartController : NetworkBehaviour
 
     private void Update()
     {
+        if (!_isSpawned) return;  // ✅ FIX: Guard against pre-Spawn access to [Networked] properties
         if (statusText != null)
             statusText.text = $"Sẵn sàng: {ReadyCount}/{requiredPlayers}";
     }
@@ -70,31 +71,26 @@ public class GameStartController : NetworkBehaviour
     private void OnStartRaceClicked()
     {
         if (!HasStateAuthority) 
-    {
-        Debug.LogWarning("Chỉ Host mới được bắt đầu game!");
-        return;
-    }
+        {
+            Debug.LogWarning("Chỉ Host mới được bắt đầu game!");
+            return;
+        }
 
-    // Kiểm tra tất cả player đã ready chưa
-    int readyCount = 0;
-    foreach (var player in Runner.ActivePlayers)
-    {
-        // Tìm LobbyCharacterSelectUI của player (cách đơn giản nhất là kiểm tra qua Network)
-        // Hoặc bạn có thể thêm [Networked] bool IsReady trong Player object
-        readyCount++;
-    }
+        // Kiểm tra tất cả player đã ready chưa
+        int readyCount = 0;
+        foreach (var player in Runner.ActivePlayers)
+        {
+            readyCount++;
+        }
 
-    if (readyCount < requiredPlayers)
-    {
-        Debug.LogWarning($"Cần ít nhất {requiredPlayers} người sẵn sàng. Hiện có {readyCount}");
-        return;
-    }
+        if (readyCount < requiredPlayers)
+        {
+            Debug.LogWarning($"Cần ít nhất {requiredPlayers} người sẵn sàng. Hiện có {readyCount}");
+            return;
+        }
 
-    Debug.Log("[GameStartController] Host bắt đầu game → Load Racing Scene");
-
-    // Ẩn Lobby UI của tất cả người chơi (gọi RPC nếu cần)
-    // Load Racing Scene
-    Runner.LoadScene(SceneRef.FromIndex(2));   // Racing Scene Index = 2
+        Debug.Log("[GameStartController] Host bắt đầu game → Load Racing Scene");
+        Runner.LoadScene(SceneRef.FromIndex(2));   // Racing Scene Index = 2
     }
 
     private void LoadRacingScene()

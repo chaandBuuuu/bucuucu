@@ -5,10 +5,10 @@ using Fusion;
 using System.Collections.Generic;
 
 /// <summary>
-/// FIXED:
-///   - Refresh button chỉ làm mới danh sách, KHÔNG join
-///   - Join button chỉ hiện/active khi đã chọn room
-///   - Tách rõ OnRefreshClicked vs OnJoinClicked
+/// FIX SUMMARY:
+///   - Register callbacks BEFORE calling StartDiscovery (tránh miss event đầu tiên)
+///   - Refresh button gọi lại StartDiscovery nếu chưa active, hoặc re-fire cache nếu đang chạy
+///   - Join button chỉ active sau khi chọn room
 /// </summary>
 public class RoomListUI : MonoBehaviour
 {
@@ -25,24 +25,27 @@ public class RoomListUI : MonoBehaviour
     private RoomItemUI _selectedRoom = null;
     private List<RoomItemUI> _roomItems = new List<RoomItemUI>();
 
-    private void Start()
+    private async void Start()
     {
-        // FIX: Setup buttons trước, KHÔNG gọi OnRefreshClicked() trong Start
-        // vì SessionDiscoveryManager chưa chắc đã có dữ liệu
         if (refreshButton != null)
             refreshButton.onClick.AddListener(OnRefreshClicked);
 
         if (joinButton != null)
         {
             joinButton.onClick.AddListener(OnJoinClicked);
-            joinButton.interactable = false; // Disabled cho đến khi chọn room
+            joinButton.interactable = false;
         }
 
-        // Register callbacks để nhận update tự động
+        // ✅ FIX: Register TRƯỚC khi gọi StartDiscovery để không miss event đầu tiên
         RegisterSessionUpdateCallbacks();
 
-        // Hiện trạng thái chờ ban đầu
-        UpdateStatus("🔍 Đang tìm phòng...");
+        UpdateStatus("🔍 Đang kết nối tìm phòng...");
+
+        // ✅ FIX: Tự gọi StartDiscovery khi menu mở — không cần người dùng bấm Refresh
+        if (SessionDiscoveryManager.Instance != null)
+            await SessionDiscoveryManager.Instance.StartDiscovery();
+        else
+            UpdateStatus("❌ SessionDiscoveryManager không tồn tại!");
     }
 
     private void OnDestroy()
@@ -74,9 +77,6 @@ public class RoomListUI : MonoBehaviour
         }
     }
 
-    /// <summary>
-    /// Được gọi tự động khi SessionDiscoveryManager có session mới
-    /// </summary>
     private void OnDiscoverySessionListUpdated(List<SessionInfo> sessions)
     {
         Debug.Log($"[RoomListUI] Session list updated: {sessions.Count} sessions");
@@ -84,10 +84,9 @@ public class RoomListUI : MonoBehaviour
     }
 
     /// <summary>
-    /// FIX: Refresh CHỈ làm mới danh sách hiển thị từ discovery cache
-    /// KHÔNG tự động join bất cứ thứ gì
+    /// ✅ FIX: Refresh gọi lại StartDiscovery (nó tự biết nếu đang chạy rồi thì re-fire cache)
     /// </summary>
-    private void OnRefreshClicked()
+    private async void OnRefreshClicked()
     {
         UpdateStatus("🔄 Đang làm mới danh sách...");
 
@@ -97,24 +96,18 @@ public class RoomListUI : MonoBehaviour
             return;
         }
 
-        // Chỉ lấy cached sessions và hiển thị lại — KHÔNG join
-        var sessions = SessionDiscoveryManager.Instance.GetDiscoveredSessions();
-        RefreshRoomListDisplay(sessions);
+        // StartDiscovery đã handle trường hợp đang chạy rồi (re-fire cache)
+        await SessionDiscoveryManager.Instance.StartDiscovery();
     }
 
-    /// <summary>
-    /// Làm mới UI danh sách phòng
-    /// </summary>
     private void RefreshRoomListDisplay(List<SessionInfo> sessions)
     {
-        // Xóa items cũ
         foreach (var item in _roomItems)
         {
             if (item != null) Destroy(item.gameObject);
         }
         _roomItems.Clear();
 
-        // FIX: Reset selected room và disable join button
         _selectedRoom = null;
         if (joinButton != null)
             joinButton.interactable = false;
@@ -149,30 +142,20 @@ public class RoomListUI : MonoBehaviour
         _roomItems.Add(item);
     }
 
-    /// <summary>
-    /// Được gọi khi người dùng click vào 1 room item
-    /// FIX: Chỉ select room, KHÔNG tự động join
-    /// </summary>
     private void OnRoomSelected(RoomItemUI roomItem)
     {
-        // Deselect cái cũ
         if (_selectedRoom != null && _selectedRoom != roomItem)
             _selectedRoom.SetSelected(false);
 
         _selectedRoom = roomItem;
         _selectedRoom.SetSelected(true);
 
-        // FIX: Chỉ enable Join button sau khi chọn room — KHÔNG join ngay
         if (joinButton != null)
             joinButton.interactable = true;
 
         UpdateStatus($"✅ Đã chọn: {roomItem.SessionName} — Nhấn Join để vào");
-        Debug.Log($"[RoomListUI] Selected room: {roomItem.SessionName}");
     }
 
-    /// <summary>
-    /// FIX: Join chỉ được gọi khi người dùng bấm nút Join
-    /// </summary>
     private async void OnJoinClicked()
     {
         if (_selectedRoom == null)
@@ -181,7 +164,6 @@ public class RoomListUI : MonoBehaviour
             return;
         }
 
-        // Validate player name
         var lobbyUI = FindObjectOfType<GameLobbyUI>();
         if (lobbyUI != null && !lobbyUI.ValidatePlayerNamePublic())
         {
@@ -198,11 +180,9 @@ public class RoomListUI : MonoBehaviour
         SetButtonsInteractable(false);
         UpdateStatus($"🚪 Đang vào phòng '{_selectedRoom.SessionName}'...");
 
-        // Stop discovery trước khi join
         if (SessionDiscoveryManager.Instance != null)
             SessionDiscoveryManager.Instance.StopDiscovery();
 
-        // Lưu tên người chơi
         if (lobbyUI != null)
         {
             string playerName = lobbyUI.GetCurrentPlayerName();
