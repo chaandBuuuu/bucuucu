@@ -2115,7 +2115,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 181201e62fbf4564b8fd66313c44d695, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GameStartController
-  requiredPlayers: 2
+  requiredPlayers: 0
   checkInterval: 1
   statusText: {fileID: 577143349}
   startRaceButton: {fileID: 1441955710}
