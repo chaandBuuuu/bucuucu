@@ -5,10 +5,10 @@ using Fusion;
 using System.Collections.Generic;
 
 /// <summary>
-/// ✅ NEW: Displays available rooms in the menu
-/// - Uses Fusion's session list
-/// - Shows room info and player count
-/// - Manual refresh
+/// FIXED:
+///   - Refresh button chỉ làm mới danh sách, KHÔNG join
+///   - Join button chỉ hiện/active khi đã chọn room
+///   - Tách rõ OnRefreshClicked vs OnJoinClicked
 /// </summary>
 public class RoomListUI : MonoBehaviour
 {
@@ -24,24 +24,25 @@ public class RoomListUI : MonoBehaviour
 
     private RoomItemUI _selectedRoom = null;
     private List<RoomItemUI> _roomItems = new List<RoomItemUI>();
-    private List<SessionInfo> _cachedSessions = new List<SessionInfo>();
 
     private void Start()
     {
+        // FIX: Setup buttons trước, KHÔNG gọi OnRefreshClicked() trong Start
+        // vì SessionDiscoveryManager chưa chắc đã có dữ liệu
         if (refreshButton != null)
             refreshButton.onClick.AddListener(OnRefreshClicked);
 
         if (joinButton != null)
         {
             joinButton.onClick.AddListener(OnJoinClicked);
-            joinButton.interactable = false;  // Disabled until room selected
+            joinButton.interactable = false; // Disabled cho đến khi chọn room
         }
 
-        // Register for session updates
+        // Register callbacks để nhận update tự động
         RegisterSessionUpdateCallbacks();
 
-        // Initial refresh
-        OnRefreshClicked();
+        // Hiện trạng thái chờ ban đầu
+        UpdateStatus("🔍 Đang tìm phòng...");
     }
 
     private void OnDestroy()
@@ -51,13 +52,9 @@ public class RoomListUI : MonoBehaviour
 
     private void RegisterSessionUpdateCallbacks()
     {
-        // ✅ UPDATED: Listen to SessionDiscoveryManager instead
         if (SessionDiscoveryManager.Instance != null)
-        {
             SessionDiscoveryManager.Instance.OnSessionListUpdatedEvent += OnDiscoverySessionListUpdated;
-        }
 
-        // Also listen to FusionNetworkManager for join events
         if (FusionNetworkManager.Instance != null)
         {
             FusionNetworkManager.Instance.OnJoinedSessionEvent += OnJoinedSession;
@@ -68,9 +65,7 @@ public class RoomListUI : MonoBehaviour
     private void UnregisterSessionUpdateCallbacks()
     {
         if (SessionDiscoveryManager.Instance != null)
-        {
             SessionDiscoveryManager.Instance.OnSessionListUpdatedEvent -= OnDiscoverySessionListUpdated;
-        }
 
         if (FusionNetworkManager.Instance != null)
         {
@@ -79,137 +74,139 @@ public class RoomListUI : MonoBehaviour
         }
     }
 
-    /// ✅ NEW: Called when SessionDiscoveryManager updates the session list
+    /// <summary>
+    /// Được gọi tự động khi SessionDiscoveryManager có session mới
+    /// </summary>
     private void OnDiscoverySessionListUpdated(List<SessionInfo> sessions)
     {
-        Debug.Log($"[RoomListUI] Received updated session list: {sessions.Count} sessions");
-        RefreshRoomList(sessions);
+        Debug.Log($"[RoomListUI] Session list updated: {sessions.Count} sessions");
+        RefreshRoomListDisplay(sessions);
     }
 
+    /// <summary>
+    /// FIX: Refresh CHỈ làm mới danh sách hiển thị từ discovery cache
+    /// KHÔNG tự động join bất cứ thứ gì
+    /// </summary>
     private void OnRefreshClicked()
     {
-        if (statusText != null)
-            statusText.text = "🔄 Đang tải danh sách phòng...";
+        UpdateStatus("🔄 Đang làm mới danh sách...");
 
-        // ✅ UPDATED: Get sessions from SessionDiscoveryManager
         if (SessionDiscoveryManager.Instance == null)
         {
-            if (statusText != null)
-                statusText.text = "❌ SessionDiscoveryManager chưa khởi tạo!";
+            UpdateStatus("❌ SessionDiscoveryManager chưa khởi tạo!");
             return;
         }
 
+        // Chỉ lấy cached sessions và hiển thị lại — KHÔNG join
         var sessions = SessionDiscoveryManager.Instance.GetDiscoveredSessions();
-        RefreshRoomList(sessions);
+        RefreshRoomListDisplay(sessions);
     }
 
-    /// ✅ NEW: Helper to refresh room list display
-    private void RefreshRoomList(List<SessionInfo> sessions)
+    /// <summary>
+    /// Làm mới UI danh sách phòng
+    /// </summary>
+    private void RefreshRoomListDisplay(List<SessionInfo> sessions)
     {
-        // Clear existing items
+        // Xóa items cũ
         foreach (var item in _roomItems)
         {
-            Destroy(item.gameObject);
+            if (item != null) Destroy(item.gameObject);
         }
         _roomItems.Clear();
+
+        // FIX: Reset selected room và disable join button
         _selectedRoom = null;
-
-        if (statusText != null)
-            statusText.text = "🔄 Đang tải danh sách phòng...";
-
         if (joinButton != null)
             joinButton.interactable = false;
 
         if (sessions == null || sessions.Count == 0)
         {
-            if (statusText != null)
-                statusText.text = "📭 Chưa có phòng nào";
+            UpdateStatus("📭 Chưa có phòng nào. Nhấn Refresh để tìm lại.");
             return;
         }
 
         int displayCount = Mathf.Min(sessions.Count, maxRoomsToDisplay);
         for (int i = 0; i < displayCount; i++)
-        {
             CreateRoomItem(sessions[i]);
-        }
 
-        if (statusText != null)
-            statusText.text = $"✅ Tìm thấy {displayCount} phòng";
+        UpdateStatus($"✅ Tìm thấy {displayCount} phòng — chọn phòng rồi nhấn Join");
     }
 
     private void CreateRoomItem(SessionInfo sessionInfo)
     {
-        if (roomItemPrefab == null)
+        if (roomItemPrefab == null || roomListContainer == null)
         {
-            Debug.LogError("[RoomListUI] roomItemPrefab not assigned!");
+            Debug.LogError("[RoomListUI] roomItemPrefab hoặc roomListContainer chưa được gán!");
             return;
         }
 
         GameObject itemGO = Instantiate(roomItemPrefab, roomListContainer);
         RoomItemUI item = itemGO.GetComponent<RoomItemUI>();
-        
         if (item == null)
-        {
-            item = itemGO.AddComponent<RoomItemUI>();  // Auto-add if missing
-        }
+            item = itemGO.AddComponent<RoomItemUI>();
 
         item.Initialize(sessionInfo, OnRoomSelected);
         _roomItems.Add(item);
     }
 
+    /// <summary>
+    /// Được gọi khi người dùng click vào 1 room item
+    /// FIX: Chỉ select room, KHÔNG tự động join
+    /// </summary>
     private void OnRoomSelected(RoomItemUI roomItem)
     {
-        // Deselect previous
+        // Deselect cái cũ
         if (_selectedRoom != null && _selectedRoom != roomItem)
             _selectedRoom.SetSelected(false);
 
         _selectedRoom = roomItem;
         _selectedRoom.SetSelected(true);
 
+        // FIX: Chỉ enable Join button sau khi chọn room — KHÔNG join ngay
         if (joinButton != null)
             joinButton.interactable = true;
 
+        UpdateStatus($"✅ Đã chọn: {roomItem.SessionName} — Nhấn Join để vào");
         Debug.Log($"[RoomListUI] Selected room: {roomItem.SessionName}");
     }
 
+    /// <summary>
+    /// FIX: Join chỉ được gọi khi người dùng bấm nút Join
+    /// </summary>
     private async void OnJoinClicked()
     {
         if (_selectedRoom == null)
         {
-            if (statusText != null)
-                statusText.text = "❌ Chọn phòng trước!";
+            UpdateStatus("❌ Chọn phòng trước khi Join!");
             return;
         }
 
-        // ✅ NEW: Validate player name before joining
+        // Validate player name
         var lobbyUI = FindObjectOfType<GameLobbyUI>();
         if (lobbyUI != null && !lobbyUI.ValidatePlayerNamePublic())
         {
-            if (statusText != null)
-                statusText.text = "❌ Vui lòng nhập tên người chơi!";
-            Debug.LogError("[RoomListUI] Cannot join without valid player name");
+            UpdateStatus("❌ Vui lòng nhập tên người chơi trước!");
+            return;
+        }
+
+        if (FusionNetworkManager.Instance == null)
+        {
+            UpdateStatus("❌ FusionNetworkManager không tồn tại!");
             return;
         }
 
         SetButtonsInteractable(false);
+        UpdateStatus($"🚪 Đang vào phòng '{_selectedRoom.SessionName}'...");
 
-        if (statusText != null)
-            statusText.text = $"🚪 Đang vào {_selectedRoom.SessionName}...";
-
-        // ✅ UPDATED: Stop discovery before joining
+        // Stop discovery trước khi join
         if (SessionDiscoveryManager.Instance != null)
-        {
             SessionDiscoveryManager.Instance.StopDiscovery();
-        }
 
-        // ✅ NEW: Store player name before joining
+        // Lưu tên người chơi
         if (lobbyUI != null)
         {
             string playerName = lobbyUI.GetCurrentPlayerName();
-            if (FusionNetworkManager.Instance != null)
-            {
-                FusionNetworkManager.Instance.SetStoredPlayerName(playerName);
-            }
+            FusionNetworkManager.Instance.SetStoredPlayerName(playerName);
         }
 
         await FusionNetworkManager.Instance.JoinSession(_selectedRoom.SessionName);
@@ -223,20 +220,25 @@ public class RoomListUI : MonoBehaviour
 
     private void OnJoinedSession()
     {
-        if (statusText != null)
-            statusText.text = "✅ Đã vào phòng!";
+        UpdateStatus("✅ Đã vào phòng!");
     }
 
     private void OnJoinFailed(string reason)
     {
         SetButtonsInteractable(true);
+        UpdateStatus($"❌ Vào phòng thất bại: {reason}");
+    }
+
+    private void UpdateStatus(string msg)
+    {
+        Debug.Log($"[RoomListUI] {msg}");
         if (statusText != null)
-            statusText.text = $"❌ Thất bại: {reason}";
+            statusText.text = msg;
     }
 }
 
 /// <summary>
-/// ✅ Individual room item in list
+/// Individual room item trong danh sách
 /// </summary>
 public class RoomItemUI : MonoBehaviour
 {
@@ -247,49 +249,32 @@ public class RoomItemUI : MonoBehaviour
 
     private SessionInfo _sessionInfo;
     private System.Action<RoomItemUI> _onSelected;
-    private bool _isSelected = false;
 
-    private Color _normalColor = new Color(1, 1, 1, 0.7f);
-    private Color _selectedColor = new Color(0, 1, 1, 1f);
+    private readonly Color _normalColor   = new Color(1f, 1f, 1f, 0.7f);
+    private readonly Color _selectedColor = new Color(0f, 1f, 1f, 1f);
 
     public string SessionName => _sessionInfo?.Name ?? "Unknown";
 
     public void Initialize(SessionInfo sessionInfo, System.Action<RoomItemUI> onSelected)
     {
         _sessionInfo = sessionInfo;
-        _onSelected = onSelected;
+        _onSelected  = onSelected;
 
-        UpdateDisplay();
-
-        if (selectButton != null)
-            selectButton.onClick.AddListener(OnClicked);
-    }
-
-    private void UpdateDisplay()
-    {
-        if (_sessionInfo == null) return;
-
-        // Display room name
         if (sessionNameText != null)
             sessionNameText.text = $"🏠 {_sessionInfo.Name}";
 
-        // Display player count
         if (playerCountText != null)
             playerCountText.text = $"👥 {_sessionInfo.PlayerCount}/{_sessionInfo.MaxPlayers}";
-    }
 
-    private void OnClicked()
-    {
-        _onSelected?.Invoke(this);
+        if (selectButton != null)
+            selectButton.onClick.AddListener(() => _onSelected?.Invoke(this));
+
+        SetSelected(false);
     }
 
     public void SetSelected(bool selected)
     {
-        _isSelected = selected;
-        
         if (backgroundImage != null)
-        {
             backgroundImage.color = selected ? _selectedColor : _normalColor;
-        }
     }
 }

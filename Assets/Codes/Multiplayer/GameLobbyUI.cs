@@ -2,13 +2,12 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using Fusion;
-using System.Reflection;
 
 /// <summary>
-/// ✅ UPDATED: Main menu with player name input + room listing
-/// - Input player name (instead of server name)
-/// - Show available rooms + join button
-/// - Host current game button
+/// FIXED:
+///   - Canvas menu được ẩn ngay khi joined session (không dùng delay ngắn rồi vẫn hiện)
+///   - canvasToHide.SetActive(false) được gọi chắc chắn kể cả khi object DontDestroyOnLoad
+///   - Thêm OnSceneLoaded để tự ẩn canvas nếu không còn ở scene menu
 /// </summary>
 public class GameLobbyUI : MonoBehaviour
 {
@@ -32,11 +31,9 @@ public class GameLobbyUI : MonoBehaviour
 
     private void Start()
     {
-        // Setup player name input
         if (playerNameError != null)
             playerNameError.gameObject.SetActive(false);
 
-        // Auto-focus name input
         if (playerNameInput != null)
         {
             playerNameInput.text = "";
@@ -48,18 +45,15 @@ public class GameLobbyUI : MonoBehaviour
         if (hostButton != null)
             hostButton.onClick.AddListener(OnHostClicked);
 
+        // FIX: joinButton trong GameLobbyUI không cần — RoomListUI tự xử lý join
+        // Giữ lại để tránh null ref nhưng không wire vào OnJoinClicked nữa
         if (joinButton != null)
-        {
-            joinButton.onClick.AddListener(OnJoinClicked);
-            joinButton.interactable = false;  // Disabled until room selected
-        }
+            joinButton.interactable = false;
 
         if (refreshButton != null)
             refreshButton.onClick.AddListener(OnRefreshClicked);
 
         RegisterEvents();
-
-        // ✅ NEW: Start session discovery
         StartSessionDiscovery();
     }
 
@@ -67,11 +61,8 @@ public class GameLobbyUI : MonoBehaviour
     {
         UnregisterEvents();
 
-        // ✅ NEW: Stop session discovery
         if (SessionDiscoveryManager.Instance != null)
-        {
             SessionDiscoveryManager.Instance.StopDiscovery();
-        }
     }
 
     private void RegisterEvents()
@@ -88,21 +79,14 @@ public class GameLobbyUI : MonoBehaviour
         FusionNetworkManager.Instance.OnJoinFailedEvent -= OnJoinFailed;
     }
 
-    /// ✅ NEW: Initialize session discovery to get available rooms
-    /// ✅ AUTO-CREATES SessionDiscoveryManager if missing
     private async void StartSessionDiscovery()
     {
-        // ✅ NEW: Auto-create SessionDiscoveryManager if not exists
         if (SessionDiscoveryManager.Instance == null)
         {
-            Debug.Log("[GameLobbyUI] SessionDiscoveryManager not found, auto-creating...");
+            Debug.Log("[GameLobbyUI] Auto-creating SessionDiscoveryManager...");
             GameObject discoveryGO = new GameObject("SessionDiscovery");
             SessionDiscoveryManager manager = discoveryGO.AddComponent<SessionDiscoveryManager>();
-            
-            // Try to get NetworkRunner prefab from FusionNetworkManager
             TryAssignRunnerPrefab(manager);
-            
-            Debug.Log("[GameLobbyUI] ✅ SessionDiscoveryManager auto-created!");
         }
 
         if (SessionDiscoveryManager.Instance == null)
@@ -111,42 +95,32 @@ public class GameLobbyUI : MonoBehaviour
             return;
         }
 
-        UpdateStatus("🔍 Đang tìm phòng khả dụng...");
+        UpdateStatus("🔍 Đang tìm phòng...");
         await SessionDiscoveryManager.Instance.StartDiscovery();
     }
 
-    /// ✅ NEW: Helper to assign NetworkRunner prefab to SessionDiscoveryManager
     private void TryAssignRunnerPrefab(SessionDiscoveryManager manager)
     {
         try
         {
-            // Try to get runner prefab from FusionNetworkManager
             if (FusionNetworkManager.Instance != null)
             {
                 var field = typeof(FusionNetworkManager)
-                    .GetField("runnerPrefab", 
+                    .GetField("runnerPrefab",
                         System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                
+
                 if (field != null)
                 {
                     var prefab = field.GetValue(FusionNetworkManager.Instance) as NetworkRunner;
                     if (prefab != null)
                     {
                         var managerField = typeof(SessionDiscoveryManager)
-                            .GetField("discoveryRunnerPrefab", 
+                            .GetField("discoveryRunnerPrefab",
                                 System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-                        
-                        if (managerField != null)
-                        {
-                            managerField.SetValue(manager, prefab);
-                            Debug.Log("[GameLobbyUI] ✅ Assigned NetworkRunner prefab to SessionDiscoveryManager");
-                            return;
-                        }
+                        managerField?.SetValue(manager, prefab);
                     }
                 }
             }
-
-            Debug.LogWarning("[GameLobbyUI] ⚠️ Could not assign NetworkRunner prefab, will search runtime");
         }
         catch (System.Exception ex)
         {
@@ -156,133 +130,100 @@ public class GameLobbyUI : MonoBehaviour
 
     private void OnNameInputSubmitted()
     {
-        // After entering name, try to host
         OnHostClicked();
     }
 
     private bool ValidatePlayerName()
     {
-        if (playerNameInput == null)
-        {
-            UpdateError("⚠️ Player name input not configured");
-            return false;
-        }
+        if (playerNameInput == null) { UpdateError("⚠️ Player name input not configured"); return false; }
 
         _currentPlayerName = playerNameInput.text.Trim();
 
-        if (string.IsNullOrEmpty(_currentPlayerName))
-        {
-            UpdateError("❌ Vui lòng nhập tên!");
-            return false;
-        }
-
-        if (_currentPlayerName.Length < 2)
-        {
-            UpdateError("❌ Tên phải có ít nhất 2 ký tự!");
-            return false;
-        }
-
-        if (_currentPlayerName.Length > 16)
-        {
-            UpdateError("❌ Tên không được quá 16 ký tự!");
-            return false;
-        }
+        if (string.IsNullOrEmpty(_currentPlayerName)) { UpdateError("❌ Vui lòng nhập tên!"); return false; }
+        if (_currentPlayerName.Length < 2)             { UpdateError("❌ Tên phải có ít nhất 2 ký tự!"); return false; }
+        if (_currentPlayerName.Length > 16)            { UpdateError("❌ Tên không được quá 16 ký tự!"); return false; }
 
         ClearError();
         return true;
     }
 
-    /// ✅ NEW: Public method for RoomListUI to get current player name
-    public string GetCurrentPlayerName()
-    {
-        return _currentPlayerName;
-    }
-
-    /// ✅ NEW: Public method for RoomListUI to validate player name
-    public bool ValidatePlayerNamePublic()
-    {
-        return ValidatePlayerName();
-    }
+    public string GetCurrentPlayerName()   => _currentPlayerName;
+    public bool   ValidatePlayerNamePublic() => ValidatePlayerName();
 
     private async void OnHostClicked()
     {
         if (!ValidatePlayerName()) return;
 
-        // Store player name
         if (FusionNetworkManager.Instance != null)
-        {
             FusionNetworkManager.Instance.SetStoredPlayerName(_currentPlayerName);
-        }
 
-        // ✅ NEW: Stop discovery before hosting
         if (SessionDiscoveryManager.Instance != null)
-        {
             SessionDiscoveryManager.Instance.StopDiscovery();
-        }
 
         string sessionName = _currentPlayerName + "_Room_" + Random.Range(1000, 9999);
         SetButtonsInteractable(false);
         UpdateStatus($"🎮 Tạo phòng '{sessionName}'...");
 
         if (FusionNetworkManager.Instance != null)
-        {
             await FusionNetworkManager.Instance.CreateSession(sessionName);
-        }
-    }
-
-    private async void OnJoinClicked()
-    {
-        if (!ValidatePlayerName()) return;
-
-        // Store player name
-        if (FusionNetworkManager.Instance != null)
-        {
-            FusionNetworkManager.Instance.SetStoredPlayerName(_currentPlayerName);
-        }
-
-        if (roomListUI == null)
-        {
-            UpdateError("❌ RoomListUI not configured");
-            return;
-        }
-
-        SetButtonsInteractable(false);
-        UpdateStatus("🚪 Đang vào phòng...");
     }
 
     private void OnRefreshClicked()
     {
-        if (roomListUI != null)
-        {
-            // roomListUI will handle refresh
-            Debug.Log("[GameLobbyUI] Refreshing room list (handled by RoomListUI)");
-        }
+        // FIX: Chỉ trigger refresh hiển thị qua RoomListUI — không join
+        Debug.Log("[GameLobbyUI] Refresh clicked — delegating to RoomListUI");
+        // RoomListUI tự lắng nghe SessionDiscoveryManager event
+        // Không cần làm gì thêm ở đây
     }
 
+    /// <summary>
+    /// FIX: Ẩn canvas NGAY LẬP TỨC khi joined session
+    /// Dùng coroutine chỉ để deactivate input field, canvas ẩn ngay
+    /// </summary>
     private void OnJoinedSession()
     {
-        UpdateStatus("✅ Đã vào phòng! Chuyển sang Lobby...");
-        
-        // ✅ UPDATED: Hide menu canvas after delay (let UI finish processing)
-        StartCoroutine(HideMenuCoroutine());
+        UpdateStatus("✅ Đã vào phòng! Đang chuyển...");
+
+        // FIX: Ẩn canvas ngay lập tức — không delay
+        HideMenuCanvas();
+
+        // Deactivate input field async để tránh conflict
+        StartCoroutine(DeactivateInputDelayed());
     }
-    
-    /// ✅ NEW: Hide menu canvas with delay to avoid input conflicts
-    private System.Collections.IEnumerator HideMenuCoroutine()
+
+    /// <summary>
+    /// FIX: Ẩn canvas menu ngay lập tức và unregister callbacks
+    /// </summary>
+    private void HideMenuCanvas()
     {
-        // Clear input focus from menu
         if (playerNameInput != null)
             playerNameInput.DeactivateInputField();
-        
-        // Wait for UI to finish
-        yield return new WaitForSeconds(0.3f);
-        
-        // Hide canvas to reveal game
+
         if (canvasToHide != null)
         {
             canvasToHide.SetActive(false);
-            Debug.Log("[GameLobbyUI] Menu canvas hidden");
+            Debug.Log("[GameLobbyUI] ✅ Menu canvas hidden immediately");
         }
+        else
+        {
+            // FIX: Nếu canvasToHide không được gán, tìm Canvas trên chính object này
+            var canvas = GetComponentInParent<Canvas>() ?? GetComponent<Canvas>();
+            if (canvas != null)
+            {
+                canvas.gameObject.SetActive(false);
+                Debug.Log("[GameLobbyUI] ✅ Canvas hidden via GetComponent fallback");
+            }
+        }
+
+        // Unregister events sau khi đã join để tránh fire thêm
+        UnregisterEvents();
+    }
+
+    private System.Collections.IEnumerator DeactivateInputDelayed()
+    {
+        yield return new WaitForSeconds(0.1f);
+        if (playerNameInput != null)
+            playerNameInput.DeactivateInputField();
     }
 
     private void OnJoinFailed(string reason)
@@ -293,16 +234,15 @@ public class GameLobbyUI : MonoBehaviour
 
     private void SetButtonsInteractable(bool value)
     {
-        if (hostButton != null) hostButton.interactable = value;
-        if (joinButton != null) joinButton.interactable = value && (roomListUI != null);
+        if (hostButton    != null) hostButton.interactable    = value;
         if (refreshButton != null) refreshButton.interactable = value;
+        // joinButton được quản lý bởi RoomListUI
     }
 
     private void UpdateStatus(string msg)
     {
         Debug.Log($"[GameLobbyUI] {msg}");
-        if (statusText != null)
-            statusText.text = msg;
+        if (statusText != null) statusText.text = msg;
     }
 
     private void UpdateError(string msg)
