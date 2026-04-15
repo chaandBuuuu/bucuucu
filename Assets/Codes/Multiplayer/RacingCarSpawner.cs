@@ -16,40 +16,32 @@ public class RacingCarSpawner : FusionCallbacksBase
     private HashSet<PlayerRef> _spawnedPlayers = new HashSet<PlayerRef>();
 
     private void OnEnable()
-    {
-        // Reset khi scene load lại
-        _registered = false;
-        _spawnedPlayers.Clear();
-    }
-
-    private void Update()
-    {
-        if (_registered) return;
-
-        var fm = FusionNetworkManager.Instance;
-        if (fm == null || fm.Runner == null || !fm.Runner.IsRunning) return;
-
-        _runner = fm.Runner;
-        _runner.AddCallbacks(this);
-        _registered = true;
-
-        Debug.Log("[RacingCarSpawner] Đã đăng ký callback sau khi load scene");
-
-        if (_runner.IsServer)
-            StartCoroutine(SpawnAllPlayersDelayed());
-    }
-
+{
+    _registered = false;
+    _spawnedPlayers.Clear();
+}   
     private IEnumerator SpawnAllPlayersDelayed()
+{
+    // Increased delay + wait until runner scene is ready
+    yield return new WaitForSeconds(1.5f);
+
+    while (_runner.SceneManager == null || !_runner.IsRunning)
+        yield return null;
+
+    Debug.Log("[RacingCarSpawner] Spawning all active players...");
+
+    foreach (PlayerRef player in _runner.ActivePlayers)
     {
-        yield return new WaitForSeconds(1.2f);   // Đợi scene load ổn định
-
-        Debug.Log("[RacingCarSpawner] Bắt đầu spawn tất cả player hiện có...");
-
-        foreach (PlayerRef player in _runner.ActivePlayers)
-        {
-            SpawnCar(player);
-        }
+        SpawnCar(player);
     }
+}
+public override void OnSceneLoadDone(NetworkRunner runner)
+{
+    if (!runner.IsServer) return;
+
+    Debug.Log("[RacingCarSpawner] Scene fully loaded → spawning cars");
+    StartCoroutine(SpawnAllPlayersDelayed());
+}   
 
     public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
     {
@@ -132,4 +124,8 @@ public class RacingCarSpawner : FusionCallbacksBase
         if (_runner != null)
             _runner.RemoveCallbacks(this);
     }
+public override void OnSceneLoadStart(NetworkRunner runner)
+{
+    _spawnedPlayers.Clear();
+}
 }

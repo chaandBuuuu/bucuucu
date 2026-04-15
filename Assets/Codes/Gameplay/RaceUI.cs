@@ -164,21 +164,26 @@ public class RaceUI : MonoBehaviour
     }
 
     private void UpdateCountdownUI()
+{
+    if (_raceManager == null || !_raceManager.IsSpawned)
     {
-        if (countdownText == null || _raceManager == null) return;
-
-        float finishCountdown = _raceManager.FinishCountdown;
-        if (finishCountdown >= 0f)
-        {
-            countdownText.gameObject.SetActive(true);
-            countdownText.text = $"⏳ Finish in {finishCountdown:F1}s";
-            countdownText.color = finishCountdown < 5f ? Color.yellow : Color.white;
-        }
-        else
-        {
+        if (countdownText != null)
             countdownText.gameObject.SetActive(false);
-        }
+        return;
     }
+
+    float finishCountdown = _raceManager.FinishCountdown;
+    if (finishCountdown >= 0f)
+    {
+        countdownText.gameObject.SetActive(true);
+        countdownText.text = $"⏳ Finish in {finishCountdown:F1}s";
+        countdownText.color = finishCountdown < 5f ? Color.yellow : Color.white;
+    }
+    else
+    {
+        countdownText.gameObject.SetActive(false);
+    }
+}
 
     private void UpdateSpeedUI()
     {

@@ -291,5 +291,5 @@ public class RaceManager : NetworkBehaviour
     }
 
     public CarController GetFirstFinisher() => _firstFinisher;
-
+    public bool IsSpawned => _isSpawned;
 }
