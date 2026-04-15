@@ -359,8 +359,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::RaceManager
   finishCountdownDuration: 10
   finishLineTransform: {fileID: 662716242}
-  _RaceStarted: 0
-  _RaceFinished: 0
+  _RaceStarted: 1
+  _RaceFinished: 1
   _RaceTimer: 0
   _CountdownCounter: -1
   _FinishCountdown: -1
@@ -560,7 +560,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &275499294
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1515,7 +1515,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!114 &846815119
 MonoBehaviour:
   m_ObjectHideFlags: 0
