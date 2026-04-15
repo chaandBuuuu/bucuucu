@@ -4,12 +4,6 @@ using TMPro;
 using Fusion;
 using System.Collections.Generic;
 
-/// <summary>
-/// FIX SUMMARY:
-///   - Register callbacks BEFORE calling StartDiscovery (tránh miss event đầu tiên)
-///   - Refresh button gọi lại StartDiscovery nếu chưa active, hoặc re-fire cache nếu đang chạy
-///   - Join button chỉ active sau khi chọn room
-/// </summary>
 public class RoomListUI : MonoBehaviour
 {
     [Header("UI References")]
@@ -36,12 +30,9 @@ public class RoomListUI : MonoBehaviour
             joinButton.interactable = false;
         }
 
-        // ✅ FIX: Register TRƯỚC khi gọi StartDiscovery để không miss event đầu tiên
         RegisterSessionUpdateCallbacks();
-
         UpdateStatus("🔍 Đang kết nối tìm phòng...");
 
-        // ✅ FIX: Tự gọi StartDiscovery khi menu mở — không cần người dùng bấm Refresh
         if (SessionDiscoveryManager.Instance != null)
             await SessionDiscoveryManager.Instance.StartDiscovery();
         else
@@ -83,9 +74,6 @@ public class RoomListUI : MonoBehaviour
         RefreshRoomListDisplay(sessions);
     }
 
-    /// <summary>
-    /// ✅ FIX: Refresh gọi lại StartDiscovery (nó tự biết nếu đang chạy rồi thì re-fire cache)
-    /// </summary>
     private async void OnRefreshClicked()
     {
         UpdateStatus("🔄 Đang làm mới danh sách...");
@@ -96,7 +84,6 @@ public class RoomListUI : MonoBehaviour
             return;
         }
 
-        // StartDiscovery đã handle trường hợp đang chạy rồi (re-fire cache)
         await SessionDiscoveryManager.Instance.StartDiscovery();
     }
 
@@ -134,9 +121,15 @@ public class RoomListUI : MonoBehaviour
         }
 
         GameObject itemGO = Instantiate(roomItemPrefab, roomListContainer);
+
+        // ✅ FIX: Lấy component có sẵn trên prefab, không AddComponent mới
         RoomItemUI item = itemGO.GetComponent<RoomItemUI>();
         if (item == null)
-            item = itemGO.AddComponent<RoomItemUI>();
+        {
+            Debug.LogError("[RoomListUI] Prefab thiếu RoomItemUI component! Hãy add vào prefab trong Editor.");
+            Destroy(itemGO);
+            return;
+        }
 
         item.Initialize(sessionInfo, OnRoomSelected);
         _roomItems.Add(item);
@@ -218,10 +211,14 @@ public class RoomListUI : MonoBehaviour
 }
 
 /// <summary>
-/// Individual room item trong danh sách
+/// Individual room item trong danh sách.
+/// ✅ FIX: Dùng GetComponentInChildren thay vì [SerializeField] để không bị null
+///         khi prefab chưa gán đủ refs trong Inspector.
 /// </summary>
 public class RoomItemUI : MonoBehaviour
 {
+    // Giữ [SerializeField] để vẫn gán được trong Inspector nếu muốn,
+    // nhưng Awake sẽ tự tìm nếu null.
     [SerializeField] private TMP_Text sessionNameText;
     [SerializeField] private TMP_Text playerCountText;
     [SerializeField] private Button selectButton;
@@ -235,6 +232,31 @@ public class RoomItemUI : MonoBehaviour
 
     public string SessionName => _sessionInfo?.Name ?? "Unknown";
 
+    private void Awake()
+    {
+        // ✅ FIX: Tự tìm child components nếu chưa được gán trong Inspector
+        if (selectButton == null)
+            selectButton = GetComponentInChildren<Button>(includeInactive: true);
+
+        if (backgroundImage == null)
+            backgroundImage = GetComponent<Image>();
+
+        // Tìm các TMP_Text theo thứ tự — index 0 = tên phòng, index 1 = số người
+        if (sessionNameText == null || playerCountText == null)
+        {
+            var texts = GetComponentsInChildren<TMP_Text>(includeInactive: true);
+            if (sessionNameText == null && texts.Length > 0) sessionNameText = texts[0];
+            if (playerCountText  == null && texts.Length > 1) playerCountText  = texts[1];
+        }
+
+        // ✅ LOG để debug nếu vẫn còn null
+        if (selectButton == null)
+            Debug.LogError($"[RoomItemUI] '{gameObject.name}': Không tìm thấy Button! " +
+                           "Hãy đảm bảo prefab có Button component.");
+        if (sessionNameText == null)
+            Debug.LogWarning($"[RoomItemUI] '{gameObject.name}': Không tìm thấy TMP_Text cho tên phòng.");
+    }
+
     public void Initialize(SessionInfo sessionInfo, System.Action<RoomItemUI> onSelected)
     {
         _sessionInfo = sessionInfo;
@@ -247,7 +269,16 @@ public class RoomItemUI : MonoBehaviour
             playerCountText.text = $"👥 {_sessionInfo.PlayerCount}/{_sessionInfo.MaxPlayers}";
 
         if (selectButton != null)
+        {
+            // ✅ Xóa listener cũ trước để tránh đăng ký trùng nếu item bị reuse
+            selectButton.onClick.RemoveAllListeners();
             selectButton.onClick.AddListener(() => _onSelected?.Invoke(this));
+            Debug.Log($"[RoomItemUI] Listener đã đăng ký cho phòng: {_sessionInfo.Name}");
+        }
+        else
+        {
+            Debug.LogError($"[RoomItemUI] selectButton NULL — click sẽ không hoạt động cho '{_sessionInfo.Name}'!");
+        }
 
         SetSelected(false);
     }
