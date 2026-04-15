@@ -18,11 +18,12 @@ public class GameStartController : NetworkBehaviour
 
     [Networked] private int ReadyCount { get; set; }
     [Networked] private bool RaceStarting { get; set; }
-
+    private bool _isSpawned = false;
     private float _lastCheck = 0f;
 
     public override void Spawned()
     {
+        _isSpawned = true;
         Debug.Log("[GameStartController] Chờ player sẵn sàng...");
         
         if (startRaceButton != null)
@@ -31,6 +32,7 @@ public class GameStartController : NetworkBehaviour
             bool isHost = HasStateAuthority;
             startRaceButton.gameObject.SetActive(isHost);
         }
+        Debug.Log("[GameStartController] Spawned!");
     }
 
     public override void FixedUpdateNetwork()

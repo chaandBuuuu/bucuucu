@@ -46,60 +46,52 @@ public class SessionDiscoveryManager : MonoBehaviour, INetworkRunnerCallbacks
     /// Start session discovery - connect and get available rooms list
     /// </summary>
     public async Task StartDiscovery()
+{
+    if (_isDiscoveryActive)
     {
-        if (_isDiscoveryActive)
-        {
-            Debug.Log("[SessionDiscoveryManager] Discovery already active");
-            return;
-        }
-
-        Debug.Log("[SessionDiscoveryManager] Starting session discovery...");
-        _isDiscoveryActive = true;
-
-        // Create discovery runner if not exists
-        if (_discoveryRunner == null)
-        {
-            _discoveryRunner = Instantiate(discoveryRunnerPrefab);
-            _discoveryRunner.name = "SessionDiscoveryRunner";
-        }
-
-        // Add callbacks
-        _discoveryRunner.AddCallbacks(this);
-
-        // Start as Client to query sessions
-        var args = new StartGameArgs
-        {
-            GameMode = GameMode.Client,
-            SessionName = "", // Empty to discover, not join specific room
-            PlayerCount = 1,
-            SceneManager = _discoveryRunner.GetComponent<NetworkSceneManagerDefault>()
-                        ?? _discoveryRunner.gameObject.AddComponent<NetworkSceneManagerDefault>()
-        };
-
-        var result = await _discoveryRunner.StartGame(args);
-
-        if (!result.Ok)
-        {
-            Debug.LogError($"[SessionDiscoveryManager] Discovery failed: {result.ShutdownReason}");
-            _isDiscoveryActive = false;
-            OnDiscoveryFailed?.Invoke(result.ShutdownReason.ToString());
-            StopDiscovery();
-        }
-        else
-        {
-            Debug.Log("[SessionDiscoveryManager] Discovery runner started, waiting for session list...");
-            OnDiscoveryConnected?.Invoke();
-            
-            // Set timeout to stop discovery if no sessions received
-            _ = Task.Delay((int)(discoveryTimeout * 1000)).ContinueWith(_ =>
-            {
-                if (_isDiscoveryActive && _discoveredSessions.Count == 0)
-                {
-                    Debug.LogWarning("[SessionDiscoveryManager] No sessions found after timeout");
-                }
-            });
-        }
+        Debug.Log("[SessionDiscoveryManager] Discovery đang chạy rồi");
+        return;
     }
+
+    Debug.Log("[SessionDiscoveryManager] Bắt đầu tìm phòng...");
+
+    _isDiscoveryActive = true;
+    _discoveredSessions.Clear();
+
+    // Tạo discovery runner nếu chưa có
+    if (_discoveryRunner == null)
+    {
+        _discoveryRunner = Instantiate(discoveryRunnerPrefab);
+        _discoveryRunner.name = "SessionDiscoveryRunner";
+    }
+
+    _discoveryRunner.AddCallbacks(this);
+
+    // ✅ CODE ĐÃ SỬA (không còn EnableClientSessionList)
+    var args = new StartGameArgs
+    {
+        GameMode     = GameMode.Client,     // Dùng Client để discovery
+        SessionName  = null,                // Quan trọng: null thay vì ""
+        PlayerCount  = 1,
+        SceneManager = _discoveryRunner.GetComponent<NetworkSceneManagerDefault>() 
+                     ?? _discoveryRunner.gameObject.AddComponent<NetworkSceneManagerDefault>()
+    };
+
+    var result = await _discoveryRunner.StartGame(args);
+
+    if (!result.Ok)
+    {
+        Debug.LogError($"[SessionDiscoveryManager] Discovery failed: {result.ShutdownReason}");
+        _isDiscoveryActive = false;
+        OnDiscoveryFailed?.Invoke(result.ShutdownReason.ToString());
+        StopDiscovery();
+    }
+    else
+    {
+        Debug.Log("[SessionDiscoveryManager] ✅ Discovery runner khởi động thành công! Đang chờ danh sách phòng...");
+        OnDiscoveryConnected?.Invoke();
+    }
+}   
 
     /// <summary>
     /// Stop discovery and shut down the runner
