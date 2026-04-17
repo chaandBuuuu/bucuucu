@@ -46,6 +46,13 @@ public class GameEndChatManager : MonoBehaviour
     private bool _isGameEnded = false;
     private List<(CarController, int, float, float)> _finalRankings;
 
+    private struct ChatMessage
+    {
+        public string playerName;
+        public string message;
+        public float timestamp;
+    }
+
     private void Start()
     {
         // Initialize canvas (disabled initially)
@@ -187,7 +194,7 @@ public class GameEndChatManager : MonoBehaviour
             return;
 
         GameObject msgGO = Instantiate(chatMessagePrefab, chatMessagesContainer);
-        var msgUI = msgGO.GetComponent<ChatMessageUI>();
+        var msgUI = msgGO.GetComponent<GameEndChatMessageUI>();
 
         if (msgUI != null)
         {
@@ -286,9 +293,9 @@ public class GameEndChatManager : MonoBehaviour
 }
 
 /// <summary>
-/// ✅ Individual chat message display
+/// Individual chat message display component (for GameEndChatManager)
 /// </summary>
-public class ChatMessageUI : MonoBehaviour
+public class GameEndChatMessageUI : MonoBehaviour
 {
     [SerializeField] private TMP_Text playerNameText;
     [SerializeField] private TMP_Text messageText;
@@ -301,14 +308,4 @@ public class ChatMessageUI : MonoBehaviour
         if (messageText != null)
             messageText.text = message;
     }
-}
-
-/// <summary>
-/// ✅ Internal chat message data
-/// </summary>
-public struct ChatMessage
-{
-    public string PlayerName;
-    public string Message;
-    public float Timestamp;
 }

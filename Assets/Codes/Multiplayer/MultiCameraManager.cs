@@ -4,10 +4,11 @@ using System.Collections.Generic;
 using System.Linq;
 
 /// <summary>
-/// ✅ Multi-camera system cho split-screen racing
+/// ✅ UPDATED: Multi-camera system cho split-screen racing + single camera toggle
 /// - Hỗ trợ 1-4 players với dynamic viewport sizing
 /// - 2x2 grid layout cho split-screen
-/// - Mỗi camera theo dõi player riêng biệt
+/// - HOST: Enter key để toggle giữa single camera (host only) vs split-screen (tất cả players)
+/// - PARTICIPANTS: Luôn để thấy camera của họ (thay vì không thấy gì)
 /// </summary>
 public class MultiCameraManager : MonoBehaviour
 {
@@ -18,10 +19,23 @@ public class MultiCameraManager : MonoBehaviour
     [SerializeField] private Vector3 cameraOffset = new Vector3(0, 0, -10);
     [SerializeField] private float orthoSize = 10f;
 
+    [Header("Host Single Camera")]
+    [SerializeField] private Vector3 singleCameraOffset = new Vector3(0, 0, -10);
+    [SerializeField] private float singleCameraOrthoSize = 15f;
+
+    // ── Camera Modes ─────────────────────────────────────────────────────
+    private enum CameraMode
+    {
+        SingleCamera,    // Chỉ camera của host
+        SplitScreen      // Tất cả players
+    }
+
+    private CameraMode _currentMode = CameraMode.SplitScreen;
     private Dictionary<PlayerRef, Camera> _playerCameras = new Dictionary<PlayerRef, Camera>();
     private Dictionary<PlayerRef, CarController> _playerCars = new Dictionary<PlayerRef, CarController>();
     private NetworkRunner _runner;
-    // ✅ OPTIMIZE: Cache viewport rects to avoid repeated Rect allocations
+    private bool _isHost = false;
+    // ✅ Cache viewport rects để tránh allocation lặp lại
     private Dictionary<int, Rect> _viewportRectCache = new Dictionary<int, Rect>();
 
     private void Awake()
@@ -39,7 +53,39 @@ public class MultiCameraManager : MonoBehaviour
             return;
         }
 
+        _isHost = _runner.IsServer;
+        Debug.Log($"[MultiCameraManager] IsHost={_isHost}");
+
         // Khởi tạo camera cho tất cả active players
+        InitializeCameras();
+    }
+
+    private void Update()
+    {
+        // ✅ HOST ONLY: Enter key để toggle camera mode
+        if (_isHost && Input.GetKeyDown(KeyCode.Return))
+        {
+            ToggleCameraMode();
+        }
+    }
+
+    /// <summary>
+    /// Toggle camera mode: SingleCamera ↔ SplitScreen (HOST ONLY)
+    /// </summary>
+    private void ToggleCameraMode()
+    {
+        _currentMode = _currentMode == CameraMode.SingleCamera ? CameraMode.SplitScreen : CameraMode.SingleCamera;
+        
+        Debug.Log($"[MultiCameraManager] 📹 Camera Mode: {_currentMode}");
+
+        // Clear existing cameras
+        foreach (var cam in _playerCameras.Values)
+        {
+            if (cam != null) Destroy(cam.gameObject);
+        }
+        _playerCameras.Clear();
+
+        // Reinitialize cameras with new mode
         InitializeCameras();
     }
 
@@ -49,13 +95,49 @@ public class MultiCameraManager : MonoBehaviour
 
         var activePlayers = _runner.ActivePlayers.ToList();
         int playerCount = activePlayers.Count;
-        Debug.Log($"[MultiCameraManager] Initializing cameras cho {playerCount} players");
+        Debug.Log($"[MultiCameraManager] Initializing cameras cho {playerCount} players (Mode: {_currentMode})");
 
-        int cameraIndex = 0;
-        foreach (PlayerRef player in activePlayers)
+        if (_currentMode == CameraMode.SingleCamera && _isHost)
         {
-            CreateCameraForPlayer(player, cameraIndex, playerCount);
-            cameraIndex++;
+            // Host only camera (fixed top-down)
+            CreateSingleCamera(activePlayers[0]);
+        }
+        else
+        {
+            // Split-screen for all players
+            int cameraIndex = 0;
+            foreach (PlayerRef player in activePlayers)
+            {
+                CreateCameraForPlayer(player, cameraIndex, playerCount);
+                cameraIndex++;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Create single camera (host only, centered on host)
+    /// </summary>
+    private void CreateSingleCamera(PlayerRef player)
+    {
+        if (_playerCameras.TryGetValue(player, out var oldCam) && oldCam != null)
+            Destroy(oldCam.gameObject);
+
+        GameObject camObj = new GameObject($"Camera_SingleMode_Host");
+        Camera cam = camObj.AddComponent<Camera>();
+        camObj.AddComponent<AudioListener>();
+        CameraFollowTarget follower = camObj.AddComponent<CameraFollowTarget>();
+
+        cam.orthographic = true;
+        cam.orthographicSize = singleCameraOrthoSize;
+        cam.rect = new Rect(0, 0, 1, 1);  // Full screen
+
+        _playerCameras[player] = cam;
+        Debug.Log($"[MultiCameraManager] Created single camera for host at full screen");
+
+        // Make camera follow the host's car
+        if (_playerCars.TryGetValue(player, out var car) && car != null)
+        {
+            follower.SetTarget(car.transform);
         }
     }
 
@@ -70,7 +152,7 @@ public class MultiCameraManager : MonoBehaviour
         // Tạo camera GameObject mới
         GameObject camObj = new GameObject($"Camera_Player{player.PlayerId}");
         Camera cam = camObj.AddComponent<Camera>();
-        AudioListener audioListener = camObj.AddComponent<AudioListener>();
+        camObj.AddComponent<AudioListener>();  // ✅ IMPORTANT: AudioListener for sound
         CameraFollowTarget follower = camObj.AddComponent<CameraFollowTarget>();
 
         cam.orthographic = true;
@@ -82,7 +164,10 @@ public class MultiCameraManager : MonoBehaviour
         cam.rect = viewport;
 
         _playerCameras[player] = cam;
-        Debug.Log($"[MultiCameraManager] Created camera for Player {player.PlayerId} at viewport {viewport}");
+        
+        // ✅ Log whether this is local player
+        bool isLocalPlayer = (_runner.LocalPlayer == player);
+        Debug.Log($"[MultiCameraManager] Created camera for Player {player.PlayerId} (Local: {isLocalPlayer}) at viewport {viewport}");
     }
 
     private Rect GetViewportRect(int playerIndex, int totalPlayers)
@@ -138,12 +223,11 @@ public class MultiCameraManager : MonoBehaviour
     {
         var activePlayers = _runner.ActivePlayers.ToList();
         int playerCount = activePlayers.Count;
-        int index = activePlayers.IndexOf(player);
 
-        if (index >= 0)
-        {
-            CreateCameraForPlayer(player, index, playerCount);
-        }
+        // ✅ Re-initialize all cameras to adjust for new player
+        InitializeCameras();
+        
+        Debug.Log($"[MultiCameraManager] Player joined, re-initialized cameras. Total: {playerCount}");
     }
 
     public void OnPlayerLeft(PlayerRef player)
@@ -162,6 +246,8 @@ public class MultiCameraManager : MonoBehaviour
         {
             InitializeCameras();
         }
+        
+        Debug.Log($"[MultiCameraManager] Player left, re-initialized cameras. Total: {playerCount}");
     }
 }
 
