@@ -4,21 +4,15 @@ using Fusion;
 using System.Collections;
 
 /// <summary>
-/// ✅ Camera system – Cinemachine 2.x (2.10.7) + Photon Fusion
+/// ✅ MultiCameraManager – NetworkBehaviour
 ///
-///   [Follow Mode]   : CinemachineVirtualCamera follow xe local player
-///                     + CinemachineConfiner2D giới hạn trong Collider2D của map
-///   [Overview Mode] : CinemachineVirtualCamera cố định nhìn toàn bộ map
+/// QUAN TRỌNG: Object này phải được SERVER SPAWN (không đặt sẵn trong scene).
+/// Thêm prefab này vào RacingCarSpawner và spawn trong OnSceneLoadDone.
 ///
-/// HOST: nhấn Enter → toggle mode → sync tất cả clients qua [Networked]
+///   [Follow Mode]   : VCam follow xe local player, giới hạn trong mapBoundsCollider
+///   [Overview Mode] : VCam cố định nhìn toàn map
 ///
-/// FIX: CinemachineConfiner2D phải được AddComponent SAU 1 frame
-///      để CinemachineVirtualCamera kịp khởi tạo xong → dùng coroutine
-///
-/// Setup:
-///   1. Tạo GameObject "MapBounds" → BoxCollider2D bao quanh track → Is Trigger = true
-///   2. Gắn script này vào NetworkObject trong scene
-///   3. Xóa CameraFollow.cs cũ khỏi Main Camera
+/// HOST: Enter để toggle → sync tất cả clients qua [Networked]
 /// </summary>
 public class MultiCameraManager : NetworkBehaviour
 {
@@ -46,7 +40,7 @@ public class MultiCameraManager : NetworkBehaviour
     private Camera _mainCamera;
     private CinemachineVirtualCamera _followVCam;
     private CinemachineVirtualCamera _overviewVCam;
-    private Transform _pendingFollowTarget;   // buffer nếu RegisterPlayerCar() gọi trước vcam sẵn sàng
+    private Transform _pendingFollowTarget;
 
     // ─────────────────────────────────────────────────────────────────────
 
@@ -56,16 +50,32 @@ public class MultiCameraManager : NetworkBehaviour
         Instance = this;
     }
 
+    /// <summary>
+    /// Spawned() chạy trên TẤT CẢ clients sau khi server spawn object này
+    /// </summary>
     public override void Spawned()
     {
+        // Disable tất cả camera ngoài scene GamePlay (Menu camera, v.v.)
+        DisableExternalCameras();
+
+        // Setup Main Camera trong scene GamePlay
         SetupMainCamera();
-        StartCoroutine(InitVCamsNextFrame());
+
+        // Tạo VCam
+        CreateFollowVCam();
+        CreateOverviewVCam();
+
+        // Chờ 1 frame rồi add Confiner2D
+        StartCoroutine(AddConfinerNextFrame());
+
+        Debug.Log($"[MultiCameraManager] ✅ Spawned – StateAuthority={Object.HasStateAuthority}, LocalPlayer={Runner.LocalPlayer}");
     }
 
     public override void Despawned(NetworkRunner runner, bool hasState)
     {
-        if (_followVCam != null)   Destroy(_followVCam.gameObject);
-        if (_overviewVCam != null)  Destroy(_overviewVCam.gameObject);
+        Instance = null;
+        if (_followVCam != null)  Destroy(_followVCam.gameObject);
+        if (_overviewVCam != null) Destroy(_overviewVCam.gameObject);
     }
 
     private void Update()
@@ -76,57 +86,55 @@ public class MultiCameraManager : NetworkBehaviour
     }
 
     // ─────────────────────────────────────────────────────────────────────
-    #region Init (coroutine – chờ 1 frame cho VCam khởi tạo xong)
+    #region Setup
 
-    private IEnumerator InitVCamsNextFrame()
+    private void DisableExternalCameras()
     {
-        // Bước 1: Tạo VCam (chưa add Confiner)
-        CreateFollowVCam();
-        CreateOverviewVCam();
-
-        // Bước 2: Chờ 1 frame để Cinemachine khởi tạo VCam xong
-        yield return null;
-
-        // Bước 3: Bây giờ mới add Confiner2D
-        if (mapBoundsCollider != null && _followVCam != null)
+        var allCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
+        foreach (var cam in allCameras)
         {
-            var confiner = _followVCam.gameObject.AddComponent<CinemachineConfiner2D>();
-            confiner.m_BoundingShape2D = mapBoundsCollider;
-            confiner.m_Damping         = 0f;
-            confiner.InvalidateCache();
-            Debug.Log($"[MultiCameraManager] ✅ Confiner2D attached → {mapBoundsCollider.name}");
+            // Chỉ giữ camera thuộc scene hiện tại (GamePlay scene)
+            if (cam.gameObject.scene != gameObject.scene)
+            {
+                cam.enabled = false;
+                var al = cam.GetComponent<AudioListener>();
+                if (al != null) al.enabled = false;
+                Debug.Log($"[MultiCameraManager] Disabled external camera: {cam.name}");
+            }
         }
-
-        // Bước 4: Set pending follow target nếu đã có
-        if (_pendingFollowTarget != null && _followVCam != null)
-        {
-            _followVCam.Follow = _pendingFollowTarget;
-            _pendingFollowTarget = null;
-        }
-
-        // Bước 5: Áp dụng mode
-        ApplyCameraMode(CurrentMode);
-
-        Debug.Log($"[MultiCameraManager] ✅ VCams ready – StateAuthority={Object.HasStateAuthority}, LocalPlayer={Runner.LocalPlayer}");
     }
-
-    #endregion
-
-    // ─────────────────────────────────────────────────────────────────────
-    #region Camera Setup
 
     private void SetupMainCamera()
     {
-        _mainCamera = Camera.main;
+        // Tìm Main Camera trong scene GamePlay
+        _mainCamera = null;
+        var allCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
+        foreach (var cam in allCameras)
+        {
+            if (cam.gameObject.scene == gameObject.scene)
+            {
+                _mainCamera = cam;
+                break;
+            }
+        }
+
+        // Nếu không có thì tạo mới
         if (_mainCamera == null)
         {
             var go = new GameObject("Main Camera") { tag = "MainCamera" };
+            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(go, gameObject.scene);
             _mainCamera = go.AddComponent<Camera>();
             go.AddComponent<AudioListener>();
         }
 
+        _mainCamera.tag          = "MainCamera";
         _mainCamera.orthographic = true;
-        _mainCamera.rect = new Rect(0, 0, 1, 1);
+        _mainCamera.rect         = new Rect(0, 0, 1, 1);
+
+        // Disable AudioListener trùng
+        var allListeners = FindObjectsByType<AudioListener>(FindObjectsSortMode.None);
+        foreach (var al in allListeners)
+            if (al.gameObject != _mainCamera.gameObject) al.enabled = false;
 
         if (_mainCamera.GetComponent<CinemachineBrain>() == null)
             _mainCamera.gameObject.AddComponent<CinemachineBrain>();
@@ -135,8 +143,10 @@ public class MultiCameraManager : NetworkBehaviour
     private void CreateFollowVCam()
     {
         var go = new GameObject("VCam_Follow");
+        UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(go, gameObject.scene);
+
         _followVCam = go.AddComponent<CinemachineVirtualCamera>();
-        _followVCam.m_Lens.Orthographic    = true;
+        _followVCam.m_Lens.Orthographic     = true;
         _followVCam.m_Lens.OrthographicSize = followOrthoSize;
         _followVCam.m_Priority              = 10;
 
@@ -147,9 +157,6 @@ public class MultiCameraManager : NetworkBehaviour
         transposer.m_ZDamping     = 0f;
         transposer.m_BindingMode  = CinemachineTransposer.BindingMode.WorldSpace;
 
-        // ⚠️ KHÔNG add CinemachineConfiner2D ở đây
-        // → add sau 1 frame trong InitVCamsNextFrame()
-
         _followVCam.Follow = null;
     }
 
@@ -159,22 +166,42 @@ public class MultiCameraManager : NetworkBehaviour
         {
             Bounds b     = mapBoundsCollider.bounds;
             float aspect = (float)Screen.width / Screen.height;
-            float sizeH  = b.size.y / 2f;
-            float sizeW  = (b.size.x / 2f) / aspect;
-            overviewOrthoSize = Mathf.Max(sizeH, sizeW) * 1.05f;
+            overviewOrthoSize = Mathf.Max(b.size.y / 2f, (b.size.x / 2f) / aspect) * 1.05f;
             overviewPosition  = new Vector3(b.center.x, b.center.y, followOffset.z);
-            Debug.Log($"[MultiCameraManager] AutoFit: pos={overviewPosition}, ortho={overviewOrthoSize:F1}");
         }
 
         var go = new GameObject("VCam_Overview");
+        UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(go, gameObject.scene);
         go.transform.position = overviewPosition;
 
         _overviewVCam = go.AddComponent<CinemachineVirtualCamera>();
-        _overviewVCam.m_Lens.Orthographic    = true;
+        _overviewVCam.m_Lens.Orthographic     = true;
         _overviewVCam.m_Lens.OrthographicSize = overviewOrthoSize;
         _overviewVCam.m_Priority              = 5;
+        _overviewVCam.Follow                  = null;
+    }
 
-        _overviewVCam.Follow = null;
+    private IEnumerator AddConfinerNextFrame()
+    {
+        yield return null; // chờ VCam init xong
+
+        if (mapBoundsCollider != null && _followVCam != null)
+        {
+            var confiner = _followVCam.gameObject.AddComponent<CinemachineConfiner2D>();
+            confiner.m_BoundingShape2D = mapBoundsCollider;
+            confiner.m_Damping         = 0f;
+            confiner.InvalidateCache();
+            Debug.Log($"[MultiCameraManager] ✅ Confiner2D attached");
+        }
+
+        // Set pending target
+        if (_pendingFollowTarget != null)
+        {
+            _followVCam.Follow   = _pendingFollowTarget;
+            _pendingFollowTarget = null;
+        }
+
+        ApplyCameraMode(CurrentMode);
     }
 
     #endregion
@@ -199,17 +226,8 @@ public class MultiCameraManager : NetworkBehaviour
     private void ApplyCameraMode(CameraMode mode)
     {
         if (_followVCam == null || _overviewVCam == null) return;
-
-        if (mode == CameraMode.Follow)
-        {
-            _followVCam.m_Priority   = 10;
-            _overviewVCam.m_Priority = 5;
-        }
-        else
-        {
-            _followVCam.m_Priority   = 5;
-            _overviewVCam.m_Priority = 10;
-        }
+        _followVCam.m_Priority   = mode == CameraMode.Follow ? 10 : 5;
+        _overviewVCam.m_Priority = mode == CameraMode.Follow ? 5  : 10;
     }
 
     #endregion
@@ -229,15 +247,13 @@ public class MultiCameraManager : NetworkBehaviour
 
         if (_followVCam != null)
         {
-            // VCam đã sẵn sàng → set ngay
             _followVCam.Follow = car.transform;
             Debug.Log($"[MultiCameraManager] ✅ Follow → {car.name} (Player {player.PlayerId})");
         }
         else
         {
-            // VCam chưa sẵn sàng (coroutine chưa xong) → buffer lại
             _pendingFollowTarget = car.transform;
-            Debug.Log($"[MultiCameraManager] ⏳ Buffered follow target → {car.name}");
+            Debug.Log($"[MultiCameraManager] ⏳ Buffered → {car.name}");
         }
     }
 

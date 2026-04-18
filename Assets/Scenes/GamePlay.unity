@@ -119,78 +119,6 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &110516109
-GameObject:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  serializedVersion: 6
-  m_Component:
-  - component: {fileID: 110516111}
-  - component: {fileID: 110516110}
-  - component: {fileID: 110516112}
-  m_Layer: 0
-  m_Name: MultiCameraManager
-  m_TagString: Untagged
-  m_Icon: {fileID: 0}
-  m_NavMeshLayer: 0
-  m_StaticEditorFlags: 0
-  m_IsActive: 1
---- !u!114 &110516110
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 110516109}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 90dcbe4a4597fe74fb70c6eba3de1023, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::MultiCameraManager
-  _CurrentMode: 0
-  followOrthoSize: 10
-  dampingXY: 0.5
-  followOffset: {x: 0, y: 0, z: -10}
-  mapBoundsCollider: {fileID: 262767709}
-  autoFitOverview: 1
-  overviewOrthoSize: 25
-  overviewPosition: {x: 0, y: 0, z: 0}
---- !u!4 &110516111
-Transform:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 110516109}
-  serializedVersion: 2
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
-  m_Children: []
-  m_Father: {fileID: 0}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &110516112
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 110516109}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: -1552182283, guid: e725a070cec140c4caffb81624c8c787, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Fusion.Runtime.dll::Fusion.NetworkObject
-  SortKey: 3733931130
-  ObjectInterest: 1
-  Flags: 262145
-  NestedObjects: []
-  NetworkedBehaviours:
-  - {fileID: 110516110}
-  ForceRemoteRenderTimeframe: 0
 --- !u!1 &186110079
 GameObject:
   m_ObjectHideFlags: 0
@@ -2370,6 +2298,7 @@ MonoBehaviour:
   - {fileID: 881060744}
   - {fileID: 1549487229}
   - {fileID: 562356740}
+  cameraManagerPrefab: {fileID: 4643732566640736203, guid: b0512e27b9ff40147b8fe8ce838a54f6, type: 3}
 --- !u!4 &1591327929
 Transform:
   m_ObjectHideFlags: 0
@@ -2840,7 +2769,6 @@ SceneRoots:
   - {fileID: 566149033}
   - {fileID: 1591327929}
   - {fileID: 1260473655}
-  - {fileID: 110516111}
   - {fileID: 1966324881}
   - {fileID: 186110081}
   - {fileID: 197602666}
