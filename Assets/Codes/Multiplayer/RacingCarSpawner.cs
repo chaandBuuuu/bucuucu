@@ -3,6 +3,14 @@ using Fusion;
 using System.Collections;
 using System.Collections.Generic;
 
+/// <summary>
+/// ✅ UPDATED: Spawn xe cho từng player, sau đó gọi MultiCameraManager.RegisterPlayerCar()
+/// 
+/// Lưu ý quan trọng:
+///   - SpawnCar() chỉ chạy trên SERVER (IsServer check)
+///   - RegisterPlayerCar() được gọi sau spawn → MultiCameraManager tự lọc local player
+///   - Không cần thay đổi logic spawn, chỉ đảm bảo gọi Register đúng chỗ
+/// </summary>
 public class RacingCarSpawner : FusionCallbacksBase
 {
     [Header("Car Prefabs")]
@@ -17,7 +25,6 @@ public class RacingCarSpawner : FusionCallbacksBase
 
     private void Start()
     {
-        // Thử lấy runner ngay khi scene load xong
         var mgr = FusionNetworkManager.Instance;
         if (mgr != null && mgr.Runner != null)
         {
@@ -25,7 +32,6 @@ public class RacingCarSpawner : FusionCallbacksBase
         }
         else
         {
-            // Runner chưa sẵn sàng → chờ
             StartCoroutine(WaitForRunnerAndInit());
         }
     }
@@ -62,8 +68,6 @@ public class RacingCarSpawner : FusionCallbacksBase
 
         Debug.Log($"[RacingCarSpawner] ✅ Đã đăng ký callbacks với Runner. IsServer={_runner.IsServer}");
 
-        // Nếu đã là server và runner đang chạy → spawn các player hiện có ngay
-        // (vì OnSceneLoadDone đã miss trước khi spawner tồn tại)
         if (_runner.IsServer && _runner.IsRunning)
         {
             Debug.Log("[RacingCarSpawner] Server đang chạy → spawn players hiện có");
@@ -77,7 +81,6 @@ public class RacingCarSpawner : FusionCallbacksBase
         _spawnedPlayers.Clear();
     }
 
-    // Callback: scene load xong (chỉ fire nếu spawner đã được đăng ký trước khi scene load)
     public override void OnSceneLoadDone(NetworkRunner runner)
     {
         if (!runner.IsServer) return;
@@ -97,6 +100,15 @@ public class RacingCarSpawner : FusionCallbacksBase
 
         Debug.Log($"[RacingCarSpawner] Player {player} joined → Spawn xe");
         StartCoroutine(SpawnCarDelayed(player));
+    }
+
+    public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player)
+    {
+        _spawnedPlayers.Remove(player);
+
+        var camManager = MultiCameraManager.Instance;
+        if (camManager != null)
+            camManager.OnPlayerLeft(player);
     }
 
     private IEnumerator SpawnAllPlayersDelayed()
@@ -124,7 +136,6 @@ public class RacingCarSpawner : FusionCallbacksBase
     {
         if (_spawnedPlayers.Contains(player)) return;
 
-        // Kiểm tra đã có object chưa
         if (_runner.TryGetPlayerObject(player, out _))
         {
             _spawnedPlayers.Add(player);
@@ -132,31 +143,28 @@ public class RacingCarSpawner : FusionCallbacksBase
             return;
         }
 
-        // Đảm bảo carPrefabList có sẵn
         if (carPrefabList == null)
         {
             carPrefabList = FusionNetworkManager.Instance.carPrefabList;
             if (carPrefabList == null)
             {
-                Debug.LogError("[RacingCarSpawner] carPrefabList không được gán! Hãy kiểm tra FusionNetworkManager");
+                Debug.LogError("[RacingCarSpawner] carPrefabList không được gán!");
                 return;
             }
         }
 
         int carIndex = FusionNetworkManager.Instance.GetPlayerCarChoice(player);
 
-        // Validate car index
         if (carIndex < 0 || carIndex >= carPrefabList.carPrefabs.Length)
         {
-            Debug.LogWarning($"[RacingCarSpawner] carIndex {carIndex} không hợp lệ (có {carPrefabList.carPrefabs.Length} xe). Dùng index 0");
+            Debug.LogWarning($"[RacingCarSpawner] carIndex {carIndex} không hợp lệ → dùng index 0");
             carIndex = 0;
         }
 
         NetworkObject prefab = carPrefabList.carPrefabs[carIndex];
-
         if (prefab == null)
         {
-            Debug.LogError($"[RacingCarSpawner] Prefab tại index {carIndex} là null! Hãy kiểm tra CarPrefabList.asset");
+            Debug.LogError($"[RacingCarSpawner] Prefab tại index {carIndex} là null!");
             return;
         }
 
@@ -165,20 +173,20 @@ public class RacingCarSpawner : FusionCallbacksBase
             ? spawnPoints[idx].position
             : new Vector3((idx - 1.5f) * 4f, -12f, 0);
 
-        Debug.Log($"[RacingCarSpawner] Spawning car for Player {player} (LocalPlayer={_runner.LocalPlayer}) at {pos}");
+        Debug.Log($"[RacingCarSpawner] Spawning car for Player {player} at {pos}");
 
         NetworkObject carObj = _runner.Spawn(prefab, pos, Quaternion.identity, player);
         _runner.SetPlayerObject(player, carObj);
         _spawnedPlayers.Add(player);
 
-        Debug.Log($"[RacingCarSpawner] ✅ Spawn thành công {prefab.name} cho Player {player} tại {pos}, HasInputAuthority={carObj.HasInputAuthority}");
+        Debug.Log($"[RacingCarSpawner] ✅ Spawn thành công {prefab.name} cho Player {player}, HasInputAuthority={carObj.HasInputAuthority}");
 
-        // Register camera
+        // ✅ Register camera – MultiCameraManager tự lọc chỉ local player mới tạo vcam
         var camManager = MultiCameraManager.Instance;
-        if (camManager != null && carObj.GetComponent<CarController>() != null)
+        var carController = carObj.GetComponent<CarController>();
+        if (camManager != null && carController != null)
         {
-            camManager.RegisterPlayerCar(player, carObj.GetComponent<CarController>());
-            Debug.Log($"[RacingCarSpawner] Registered camera for Player {player}");
+            camManager.RegisterPlayerCar(player, carController);
         }
     }
 
