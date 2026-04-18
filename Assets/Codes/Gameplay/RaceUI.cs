@@ -52,6 +52,10 @@ public class RaceUI : MonoBehaviour
         if (raceEndText != null) raceEndText.gameObject.SetActive(false);
         if (raceResultText != null) raceResultText.gameObject.SetActive(false);
         if (countdownText != null) countdownText.gameObject.SetActive(false);
+        
+        // ✅ NEW: Set initial status
+        if (statusText != null)
+            statusText.text = "🔄 WAITING FOR COUNTDOWN...";
 
         StartCoroutine(FindLocalCarRoutine());
     }
@@ -164,26 +168,43 @@ public class RaceUI : MonoBehaviour
     }
 
     private void UpdateCountdownUI()
-{
-    if (_raceManager == null || !_raceManager.IsSpawned)
     {
-        if (countdownText != null)
-            countdownText.gameObject.SetActive(false);
-        return;
-    }
+        if (_raceManager == null || !_raceManager.IsSpawned)
+        {
+            if (countdownText != null)
+                countdownText.gameObject.SetActive(false);
+            return;
+        }
 
-    float finishCountdown = _raceManager.FinishCountdown;
-    if (finishCountdown >= 0f)
-    {
-        countdownText.gameObject.SetActive(true);
-        countdownText.text = $"⏳ Finish in {finishCountdown:F1}s";
-        countdownText.color = finishCountdown < 5f ? Color.yellow : Color.white;
+        // ✅ Check pre-race countdown (3,2,1,0)
+        int preRaceCountdown = _raceManager.CountdownCounter;
+        if (preRaceCountdown >= 0)
+        {
+            countdownText.gameObject.SetActive(true);
+            if (preRaceCountdown == 0)
+                countdownText.text = "🚩 GO!";
+            else
+                countdownText.text = preRaceCountdown.ToString();
+            
+            countdownText.color = Color.yellow;
+            countdownText.fontSize = 80;  // Bigger for pre-race
+            return;
+        }
+
+        // ✅ Check post-finish countdown (10s)
+        float finishCountdown = _raceManager.FinishCountdown;
+        if (finishCountdown >= 0f)
+        {
+            countdownText.gameObject.SetActive(true);
+            countdownText.text = $"⏳ Finish in {finishCountdown:F1}s";
+            countdownText.color = finishCountdown < 5f ? Color.yellow : Color.white;
+            countdownText.fontSize = 40;  // Normal size
+        }
+        else
+        {
+            countdownText.gameObject.SetActive(false);
+        }
     }
-    else
-    {
-        countdownText.gameObject.SetActive(false);
-    }
-}
 
     private void UpdateSpeedUI()
     {

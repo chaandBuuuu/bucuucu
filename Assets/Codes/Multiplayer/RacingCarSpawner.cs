@@ -124,6 +124,40 @@ public class RacingCarSpawner : FusionCallbacksBase
         {
             SpawnCar(player);
         }
+        
+        // ✅ NEW: Auto-trigger countdown after spawning all players
+        yield return new WaitForSeconds(2f);
+        StartCountdownIfReady();
+    }
+    
+    /// <summary>
+    /// ✅ NEW: Check if all players spawned, then trigger countdown
+    /// </summary>
+    private void StartCountdownIfReady()
+    {
+        if (!_runner.IsServer) return;
+        
+        // Check if RaceManager exists
+        var raceManager = RaceManager.Instance;
+        if (raceManager == null)
+        {
+            Debug.LogError("[RacingCarSpawner] ❌ RaceManager not found! Cannot start countdown.");
+            return;
+        }
+        
+        // Check if all active players have cars spawned
+        int expectedPlayers = 0;
+        foreach (var _ in _runner.ActivePlayers) expectedPlayers++;
+        
+        if (_spawnedPlayers.Count >= expectedPlayers && expectedPlayers > 0)
+        {
+            Debug.Log($"[RacingCarSpawner] ✅ All {expectedPlayers} players spawned. Starting countdown...");
+            raceManager.RPC_StartRace();
+        }
+        else
+        {
+            Debug.LogWarning($"[RacingCarSpawner] ⚠️ Not all players ready. Spawned: {_spawnedPlayers.Count}/{expectedPlayers}");
+        }
     }
 
     private IEnumerator SpawnCarDelayed(PlayerRef player)
