@@ -6,14 +6,11 @@ using System.Collections;
 /// <summary>
 /// ✅ MultiCameraManager – NetworkBehaviour
 ///
-/// QUAN TRỌNG: Được SERVER SPAWN như NetworkObject (không đặt sẵn trong scene).
-///
-/// FIX: mapBoundsCollider được tìm bằng tag/name lúc runtime
-///      → không bị null khi spawn từ prefab
-///
-/// Setup MapBounds trong scene:
-///   - Tạo GameObject tên "MapBounds" (hoặc tag "MapBounds")
-///   - Thêm BoxCollider2D bao quanh track, Is Trigger = true
+/// FIX CHÍNH:
+///   - NetworkObject spawn bởi Fusion nằm trong DontDestroyOnLoad
+///   - KHÔNG dùng gameObject.scene để so sánh (sẽ sai)
+///   - Disable camera theo tên scene: chỉ disable camera thuộc scene "Menu"
+///   - Tìm Main Camera theo tag "MainCamera" trong scene GamePlay
 /// </summary>
 public class MultiCameraManager : NetworkBehaviour
 {
@@ -30,7 +27,7 @@ public class MultiCameraManager : NetworkBehaviour
     [SerializeField] private Vector3 followOffset = new Vector3(0f, 0f, -10f);
 
     [Header("Map Bounds")]
-    [Tooltip("Tên GameObject chứa Collider2D bao quanh map. Script tự tìm lúc runtime.")]
+    [Tooltip("Tên GameObject chứa Collider2D bao quanh map trong scene GamePlay.")]
     [SerializeField] private string mapBoundsObjectName = "MapBounds";
 
     [Header("Overview Camera")]
@@ -42,7 +39,7 @@ public class MultiCameraManager : NetworkBehaviour
     private CinemachineVirtualCamera _followVCam;
     private CinemachineVirtualCamera _overviewVCam;
     private Transform _pendingFollowTarget;
-    private Collider2D _mapBoundsCollider;   // tìm lúc runtime
+    private Collider2D _mapBoundsCollider;
 
     // ─────────────────────────────────────────────────────────────────────
 
@@ -54,15 +51,13 @@ public class MultiCameraManager : NetworkBehaviour
 
     public override void Spawned()
     {
-        // ✅ Tìm MapBounds trong scene lúc runtime (không dùng Inspector reference)
         FindMapBounds();
-
-        DisableExternalCameras();
-        SetupMainCamera();
+        DisableMenuCamera();       // ✅ Chỉ disable camera của Menu scene
+        SetupMainCamera();         // ✅ Tìm/tạo Main Camera trong GamePlay scene
         CreateFollowVCam();
         CreateOverviewVCam();
-
         StartCoroutine(AddConfinerNextFrame());
+        StartCoroutine(AutoRegisterLocalCar());   // ✅ Tự tìm xe local nếu chưa được register
 
         Debug.Log($"[MultiCameraManager] ✅ Spawned – StateAuthority={Object.HasStateAuthority}, LocalPlayer={Runner.LocalPlayer}");
     }
@@ -84,72 +79,65 @@ public class MultiCameraManager : NetworkBehaviour
     // ─────────────────────────────────────────────────────────────────────
     #region Setup
 
-    /// <summary>
-    /// Tìm Collider2D của map theo tên GameObject.
-    /// Prefab không thể giữ scene reference nên phải tìm lúc runtime.
-    /// </summary>
     private void FindMapBounds()
     {
-        // Tìm theo tên
-        var boundsGO = GameObject.Find(mapBoundsObjectName);
-        if (boundsGO != null)
+        var go = GameObject.Find(mapBoundsObjectName);
+        if (go != null)
         {
-            _mapBoundsCollider = boundsGO.GetComponent<Collider2D>();
+            _mapBoundsCollider = go.GetComponent<Collider2D>();
             if (_mapBoundsCollider != null)
             {
-                Debug.Log($"[MultiCameraManager] ✅ Found MapBounds: {boundsGO.name}");
+                Debug.Log($"[MultiCameraManager] ✅ Found MapBounds: {go.name} in scene '{go.scene.name}'");
                 return;
             }
         }
-
-        // Fallback: tìm theo tag "MapBounds" nếu có
-        var taggedGO = GameObject.FindGameObjectWithTag("MapBounds");
-        if (taggedGO != null)
-        {
-            _mapBoundsCollider = taggedGO.GetComponent<Collider2D>();
-            if (_mapBoundsCollider != null)
-            {
-                Debug.Log($"[MultiCameraManager] ✅ Found MapBounds by tag: {taggedGO.name}");
-                return;
-            }
-        }
-
-        Debug.LogWarning($"[MultiCameraManager] ⚠️ Không tìm thấy '{mapBoundsObjectName}' trong scene. Camera sẽ không bị giới hạn bounds.");
+        Debug.LogWarning($"[MultiCameraManager] ⚠️ Không tìm thấy '{mapBoundsObjectName}'");
     }
 
-    private void DisableExternalCameras()
+    /// <summary>
+    /// Chỉ disable camera thuộc scene "Menu" (hoặc scene không phải GamePlay).
+    /// KHÔNG disable camera trong GamePlay scene.
+    /// </summary>
+    private void DisableMenuCamera()
     {
         var allCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
         foreach (var cam in allCameras)
         {
-            if (cam.gameObject.scene != gameObject.scene)
+            string sceneName = cam.gameObject.scene.name;
+            // Disable nếu camera nằm trong scene Menu hoặc DontDestroyOnLoad
+            // Giữ lại camera trong scene GamePlay
+            if (sceneName == "Menu" || sceneName == "DontDestroyOnLoad")
             {
                 cam.enabled = false;
                 var al = cam.GetComponent<AudioListener>();
                 if (al != null) al.enabled = false;
-                Debug.Log($"[MultiCameraManager] Disabled external camera: {cam.name}");
+                Debug.Log($"[MultiCameraManager] Disabled camera '{cam.name}' in scene '{sceneName}'");
             }
         }
     }
 
     private void SetupMainCamera()
     {
-        // Tìm camera trong scene GamePlay
+        // Tìm Main Camera trong scene GamePlay (tag = MainCamera)
         _mainCamera = null;
+
         var allCameras = FindObjectsByType<Camera>(FindObjectsSortMode.None);
         foreach (var cam in allCameras)
         {
-            if (cam.gameObject.scene == gameObject.scene)
+            // Camera trong GamePlay scene (không phải Menu, không phải DontDestroyOnLoad)
+            string sn = cam.gameObject.scene.name;
+            if (sn != "Menu" && sn != "DontDestroyOnLoad" && cam.enabled)
             {
                 _mainCamera = cam;
+                Debug.Log($"[MultiCameraManager] Using camera '{cam.name}' in scene '{sn}'");
                 break;
             }
         }
 
+        // Nếu vẫn không tìm được → tạo mới
         if (_mainCamera == null)
         {
             var go = new GameObject("Main Camera") { tag = "MainCamera" };
-            UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(go, gameObject.scene);
             _mainCamera = go.AddComponent<Camera>();
             go.AddComponent<AudioListener>();
             Debug.Log("[MultiCameraManager] Created new Main Camera");
@@ -159,20 +147,21 @@ public class MultiCameraManager : NetworkBehaviour
         _mainCamera.orthographic = true;
         _mainCamera.rect         = new Rect(0, 0, 1, 1);
 
-        // Disable AudioListener trùng
+        // Đảm bảo chỉ có 1 AudioListener
         var allListeners = FindObjectsByType<AudioListener>(FindObjectsSortMode.None);
         foreach (var al in allListeners)
-            if (al.gameObject != _mainCamera.gameObject) al.enabled = false;
+            if (al.gameObject != _mainCamera.gameObject)
+                al.enabled = false;
 
         if (_mainCamera.GetComponent<CinemachineBrain>() == null)
             _mainCamera.gameObject.AddComponent<CinemachineBrain>();
+
+        Debug.Log($"[MultiCameraManager] ✅ Main Camera ready: '{_mainCamera.name}'");
     }
 
     private void CreateFollowVCam()
     {
         var go = new GameObject("VCam_Follow");
-        UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(go, gameObject.scene);
-
         _followVCam = go.AddComponent<CinemachineVirtualCamera>();
         _followVCam.m_Lens.Orthographic     = true;
         _followVCam.m_Lens.OrthographicSize = followOrthoSize;
@@ -196,11 +185,9 @@ public class MultiCameraManager : NetworkBehaviour
             float aspect = (float)Screen.width / Screen.height;
             overviewOrthoSize = Mathf.Max(b.size.y / 2f, (b.size.x / 2f) / aspect) * 1.05f;
             overviewPosition  = new Vector3(b.center.x, b.center.y, followOffset.z);
-            Debug.Log($"[MultiCameraManager] AutoFit overview: pos={overviewPosition}, ortho={overviewOrthoSize:F1}");
         }
 
         var go = new GameObject("VCam_Overview");
-        UnityEngine.SceneManagement.SceneManager.MoveGameObjectToScene(go, gameObject.scene);
         go.transform.position = overviewPosition;
 
         _overviewVCam = go.AddComponent<CinemachineVirtualCamera>();
@@ -212,7 +199,6 @@ public class MultiCameraManager : NetworkBehaviour
 
     private IEnumerator AddConfinerNextFrame()
     {
-        // Chờ 1 frame để CinemachineVirtualCamera init xong
         yield return null;
 
         if (_mapBoundsCollider != null && _followVCam != null)
@@ -223,16 +209,12 @@ public class MultiCameraManager : NetworkBehaviour
             confiner.InvalidateCache();
             Debug.Log($"[MultiCameraManager] ✅ Confiner2D attached → {_mapBoundsCollider.name}");
         }
-        else
-        {
-            Debug.LogWarning("[MultiCameraManager] ⚠️ Confiner2D skipped – mapBoundsCollider null");
-        }
 
-        // Set pending target nếu RegisterPlayerCar() đã gọi trước
         if (_pendingFollowTarget != null && _followVCam != null)
         {
             _followVCam.Follow   = _pendingFollowTarget;
             _pendingFollowTarget = null;
+            Debug.Log($"[MultiCameraManager] ✅ Applied pending follow target");
         }
 
         ApplyCameraMode(CurrentMode);
@@ -245,9 +227,7 @@ public class MultiCameraManager : NetworkBehaviour
 
     private void ToggleMode()
     {
-        CurrentMode = CurrentMode == CameraMode.Follow
-            ? CameraMode.Overview
-            : CameraMode.Follow;
+        CurrentMode = CurrentMode == CameraMode.Follow ? CameraMode.Overview : CameraMode.Follow;
         Debug.Log($"[MultiCameraManager] 📹 Toggled → {CurrentMode}");
     }
 
@@ -262,6 +242,41 @@ public class MultiCameraManager : NetworkBehaviour
         if (_followVCam == null || _overviewVCam == null) return;
         _followVCam.m_Priority   = mode == CameraMode.Follow ? 10 : 5;
         _overviewVCam.m_Priority = mode == CameraMode.Follow ? 5  : 10;
+    }
+
+    #endregion
+
+    // ─────────────────────────────────────────────────────────────────────
+    #region Auto Register
+
+    /// <summary>
+    /// Tự động tìm xe của local player và register nếu chưa được register.
+    /// Fallback cho client.
+    /// </summary>
+    private IEnumerator AutoRegisterLocalCar()
+    {
+        float timeout = 10f, elapsed = 0f;
+
+        while (elapsed < timeout)
+        {
+            if (_followVCam != null && _followVCam.Follow != null)
+                yield break;
+
+            var allCars = FindObjectsByType<CarController>(FindObjectsSortMode.None);
+            foreach (var car in allCars)
+            {
+                if (car.HasInputAuthority)
+                {
+                    RegisterPlayerCar(Runner.LocalPlayer, car);
+                    yield break;
+                }
+            }
+
+            elapsed += 0.5f;
+            yield return new WaitForSeconds(0.5f);
+        }
+
+        Debug.LogWarning("[MultiCameraManager] ⚠️ AutoRegister timeout");
     }
 
     #endregion

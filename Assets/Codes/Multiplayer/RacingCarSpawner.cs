@@ -3,6 +3,16 @@ using Fusion;
 using System.Collections;
 using System.Collections.Generic;
 
+/// <summary>
+/// ✅ RacingCarSpawner
+///
+/// FIX: RegisterPlayerCar() cần chạy trên TẤT CẢ clients, không chỉ server.
+/// Server spawn xe → CarController.Spawned() chạy trên tất cả clients
+/// → Mỗi client tự gọi RegisterPlayerCar() cho xe của mình trong CarController.Spawned()
+///
+/// Hoặc dùng cách này: sau khi spawn, chờ MultiCameraManager.Instance sẵn sàng
+/// rồi register trên client qua coroutine.
+/// </summary>
 public class RacingCarSpawner : FusionCallbacksBase
 {
     [Header("Car Prefabs")]
@@ -12,7 +22,7 @@ public class RacingCarSpawner : FusionCallbacksBase
     [SerializeField] private Transform[] spawnPoints = new Transform[4];
 
     [Header("Camera Manager")]
-    [Tooltip("Prefab của MultiCameraManager (NetworkObject) – server spawn khi scene load")]
+    [Tooltip("Prefab của MultiCameraManager (NetworkObject)")]
     [SerializeField] private NetworkObject cameraManagerPrefab;
 
     private NetworkRunner _runner;
@@ -42,7 +52,7 @@ public class RacingCarSpawner : FusionCallbacksBase
             elapsed += Time.deltaTime;
             yield return null;
         }
-        Debug.LogError("[RacingCarSpawner] Timeout: Runner không sẵn sàng!");
+        Debug.LogError("[RacingCarSpawner] Timeout!");
     }
 
     public void InitializeWithRunner(NetworkRunner runner)
@@ -67,35 +77,54 @@ public class RacingCarSpawner : FusionCallbacksBase
     public override void OnSceneLoadDone(NetworkRunner runner)
     {
         if (!runner.IsServer) return;
-        Debug.Log("[RacingCarSpawner] OnSceneLoadDone");
         StartCoroutine(SpawnCameraManagerThenCars());
-    }
-
-    /// <summary>
-    /// ✅ Spawn MultiCameraManager trước → chờ → rồi spawn cars
-    /// </summary>
-    private IEnumerator SpawnCameraManagerThenCars()
-    {
-        // Spawn CameraManager nếu chưa có instance
-        if (cameraManagerPrefab != null && MultiCameraManager.Instance == null)
-        {
-            _runner.Spawn(cameraManagerPrefab, Vector3.zero, Quaternion.identity);
-            Debug.Log("[RacingCarSpawner] ✅ Spawned MultiCameraManager prefab");
-
-            // Chờ để Spawned() chạy xong trên tất cả clients
-            yield return new WaitForSeconds(0.5f);
-        }
-        else if (cameraManagerPrefab == null)
-        {
-            Debug.LogWarning("[RacingCarSpawner] ⚠️ cameraManagerPrefab chưa gán! Camera sẽ không hoạt động.");
-        }
-
-        StartCoroutine(SpawnAllPlayersDelayed());
     }
 
     public override void OnSceneLoadStart(NetworkRunner runner)
     {
         _spawnedPlayers.Clear();
+    }
+
+    private IEnumerator SpawnCameraManagerThenCars()
+    {
+        if (cameraManagerPrefab != null && MultiCameraManager.Instance == null)
+        {
+            // Thử spawn, nếu fail thì chờ 1 frame rồi thử lại
+            bool spawnFailed = false;
+            try
+            {
+                _runner.Spawn(cameraManagerPrefab, Vector3.zero, Quaternion.identity);
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning($"[RacingCarSpawner] Spawn failed: {e.Message} – retry next frame");
+                spawnFailed = true;
+            }
+
+            // Nếu fail, chờ 1 frame rồi thử lại ngoài try-catch
+            if (spawnFailed)
+            {
+                yield return null;
+                _runner.Spawn(cameraManagerPrefab, Vector3.zero, Quaternion.identity);
+            }
+
+            // Chờ MultiCameraManager.Instance sẵn sàng (tối đa 5 giây)
+            float timeout = 5f, elapsed = 0f;
+            while (MultiCameraManager.Instance == null && elapsed < timeout)
+            {
+                elapsed += Time.deltaTime;
+                yield return null;
+            }
+
+            Debug.Log($"[RacingCarSpawner] ✅ MultiCameraManager ready={MultiCameraManager.Instance != null}");
+            yield return new WaitForSeconds(0.3f);
+        }
+        else if (cameraManagerPrefab == null)
+        {
+            Debug.LogWarning("[RacingCarSpawner] ⚠️ cameraManagerPrefab chưa gán!");
+        }
+
+        StartCoroutine(SpawnAllPlayersDelayed());
     }
 
     public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
@@ -115,7 +144,6 @@ public class RacingCarSpawner : FusionCallbacksBase
         yield return new WaitForSeconds(1.5f);
         while (_runner == null || !_runner.IsRunning) yield return null;
 
-        Debug.Log("[RacingCarSpawner] Spawning all players...");
         foreach (PlayerRef player in _runner.ActivePlayers)
             SpawnCar(player);
 
@@ -173,11 +201,16 @@ public class RacingCarSpawner : FusionCallbacksBase
         _runner.SetPlayerObject(player, carObj);
         _spawnedPlayers.Add(player);
 
-        Debug.Log($"[RacingCarSpawner] ✅ Spawned {prefab.name} cho Player {player} tại {pos}");
+        Debug.Log($"[RacingCarSpawner] ✅ Spawned {prefab.name} cho Player {player}");
 
-        var carController = carObj.GetComponent<CarController>();
-        if (MultiCameraManager.Instance != null && carController != null)
-            MultiCameraManager.Instance.RegisterPlayerCar(player, carController);
+        // ✅ Server register camera cho host (local player của server)
+        // Client sẽ tự register trong CarController.Spawned() – xem bên dưới
+        if (_runner.LocalPlayer == player)
+        {
+            var carController = carObj.GetComponent<CarController>();
+            if (MultiCameraManager.Instance != null && carController != null)
+                MultiCameraManager.Instance.RegisterPlayerCar(player, carController);
+        }
     }
 
     private void OnDestroy()
