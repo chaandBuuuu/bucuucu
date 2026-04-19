@@ -77,14 +77,19 @@ public class CarController : NetworkBehaviour
         // Authority setup cho Rigidbody
         if (HasInputAuthority)
         {
+            // ✅ Local car: Dynamic physics with free movement
             _rb.bodyType       = RigidbodyType2D.Dynamic;
+            _rb.constraints    = RigidbodyConstraints2D.FreezeRotation;  // Only freeze rotation
             _rb.linearVelocity = Vector2.zero;
-            Debug.Log($"[CarController] ✅ Spawned AUTHORITY - {gameObject.name}");
+            Debug.Log($"[CarController] ✅ Spawned AUTHORITY (physics enabled) - {gameObject.name}");
         }
         else
         {
-            _rb.bodyType       = RigidbodyType2D.Kinematic;   // Remote car dùng NetworkTransform
-            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name}");
+            // ✅ Remote car: Dynamic with FULL freeze (NetworkTransform will handle position)
+            _rb.bodyType       = RigidbodyType2D.Dynamic;
+            _rb.constraints    = RigidbodyConstraints2D.FreezeAll;  // Let NetworkTransform manage position/rotation
+            _rb.linearVelocity = Vector2.zero;
+            Debug.Log($"[CarController] ✅ Spawned REMOTE (NetworkTransform sync) - {gameObject.name}");
         }
     }
 
