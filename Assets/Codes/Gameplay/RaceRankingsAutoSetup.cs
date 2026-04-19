@@ -27,6 +27,10 @@ public class RaceRankingsAutoSetup : MonoBehaviour
     [SerializeField] private Vector2 panelSize     = new Vector2(500, 400);
     [SerializeField] private Vector2 panelPosition = new Vector2(-250, -150);
 
+    // ✅ Lưu references buttons để assign vào manager
+    private Button _restartButton;
+    private Button _menuButton;
+
     // ─────────────────────────────────────────────────────────────────────────
 
     /// <summary>
@@ -112,8 +116,8 @@ public class RaceRankingsAutoSetup : MonoBehaviour
         var scrollRT = scrollGO.AddComponent<RectTransform>();
         scrollRT.anchorMin       = Vector2.zero;
         scrollRT.anchorMax       = Vector2.one;
-        scrollRT.offsetMin       = new Vector2(5, 5);
-        scrollRT.offsetMax       = new Vector2(-5, -40);
+        scrollRT.offsetMin       = new Vector2(5, 45);  // ✅ Dành chỗ cho buttons
+        scrollRT.offsetMax       = new Vector2(-5, -5);
         var scrollRect = scrollGO.AddComponent<ScrollRect>();
         var scrollBG   = scrollGO.AddComponent<Image>();
         scrollBG.color = new Color(0.1f, 0.1f, 0.1f, 0.5f);
@@ -154,8 +158,80 @@ public class RaceRankingsAutoSetup : MonoBehaviour
         scrollRect.vertical   = true;
         scrollRect.horizontal = false;
 
+        // ✅ Tạo Buttons Container (Restart + Menu)
+        CreateButtonsContainer(panel);
+
         Debug.Log("[RaceRankingsAutoSetup] ✅ RaceRankingsPanel created");
         return contentRT;
+    }
+
+    private void CreateButtonsContainer(GameObject panel)
+    {
+        var buttonsGO = new GameObject("ButtonsContainer");
+        buttonsGO.transform.SetParent(panel.transform, false);
+        var buttonsRT = buttonsGO.AddComponent<RectTransform>();
+        buttonsRT.anchorMin       = new Vector2(0, 0);
+        buttonsRT.anchorMax       = new Vector2(1, 0);
+        buttonsRT.pivot           = new Vector2(0.5f, 0);
+        buttonsRT.anchoredPosition = new Vector2(0, 5);
+        buttonsRT.sizeDelta        = new Vector2(0, 35);
+
+        var hlg = buttonsGO.AddComponent<HorizontalLayoutGroup>();
+        hlg.spacing                = 5;
+        hlg.padding                = new RectOffset(5, 5, 5, 5);
+        hlg.childForceExpandWidth  = true;
+        hlg.childForceExpandHeight = true;
+        hlg.childAlignment         = TextAnchor.MiddleCenter;
+
+        // ── Restart Button ────────────────────────────────────────────────
+        var restartBtnGO = new GameObject("RestartButton");
+        restartBtnGO.transform.SetParent(buttonsGO.transform, false);
+        var restartBtnRT = restartBtnGO.AddComponent<RectTransform>();
+        restartBtnRT.sizeDelta = new Vector2(0, 0);
+        var restartBtnImg = restartBtnGO.AddComponent<Image>();
+        restartBtnImg.color = new Color(0.2f, 0.8f, 0.2f);  // Green
+        var restartBtn = restartBtnGO.AddComponent<Button>();
+        restartBtn.targetGraphic = restartBtnImg;
+
+        var restartTextGO = new GameObject("Text");
+        restartTextGO.transform.SetParent(restartBtnGO.transform, false);
+        var restartTextRT = restartTextGO.AddComponent<RectTransform>();
+        restartTextRT.anchorMin = Vector2.zero;
+        restartTextRT.anchorMax = Vector2.one;
+        restartTextRT.offsetMin = Vector2.zero;
+        restartTextRT.offsetMax = Vector2.zero;
+        var restartTextTMP = restartTextGO.AddComponent<TextMeshProUGUI>();
+        restartTextTMP.text      = "🔄 Restart";
+        restartTextTMP.fontSize  = 14;
+        restartTextTMP.color     = Color.white;
+        restartTextTMP.alignment = TextAlignmentOptions.Center;
+
+        // ── Menu Button ───────────────────────────────────────────────────
+        var menuBtnGO = new GameObject("MenuButton");
+        menuBtnGO.transform.SetParent(buttonsGO.transform, false);
+        var menuBtnRT = menuBtnGO.AddComponent<RectTransform>();
+        menuBtnRT.sizeDelta = new Vector2(0, 0);
+        var menuBtnImg = menuBtnGO.AddComponent<Image>();
+        menuBtnImg.color = new Color(0.8f, 0.2f, 0.2f);  // Red
+        var menuBtn = menuBtnGO.AddComponent<Button>();
+        menuBtn.targetGraphic = menuBtnImg;
+
+        var menuTextGO = new GameObject("Text");
+        menuTextGO.transform.SetParent(menuBtnGO.transform, false);
+        var menuTextRT = menuTextGO.AddComponent<RectTransform>();
+        menuTextRT.anchorMin = Vector2.zero;
+        menuTextRT.anchorMax = Vector2.one;
+        menuTextRT.offsetMin = Vector2.zero;
+        menuTextRT.offsetMax = Vector2.zero;
+        var menuTextTMP = menuTextGO.AddComponent<TextMeshProUGUI>();
+        menuTextTMP.text      = "🏠 Menu";
+        menuTextTMP.fontSize  = 14;
+        menuTextTMP.color     = Color.white;
+        menuTextTMP.alignment = TextAlignmentOptions.Center;
+
+        // Lưu references cho assign vào manager
+        _restartButton = restartBtn;
+        _menuButton = menuBtn;
     }
 
     private GameObject CreateRankingItemPrefab()
@@ -236,6 +312,22 @@ public class RaceRankingsAutoSetup : MonoBehaviour
                         titleProp.objectReferenceValue = titleText;
                 }
             }
+        }
+
+        // ✅ Restart Button (tìm trong ButtonsContainer)
+        if (rankingsContainer != null && _restartButton != null)
+        {
+            var restartProp = so.FindProperty("restartButton");
+            if (restartProp != null)
+                restartProp.objectReferenceValue = _restartButton;
+        }
+
+        // ✅ Menu Button (tìm trong ButtonsContainer)
+        if (rankingsContainer != null && _menuButton != null)
+        {
+            var menuProp = so.FindProperty("menuButton");
+            if (menuProp != null)
+                menuProp.objectReferenceValue = _menuButton;
         }
 
         so.ApplyModifiedProperties();

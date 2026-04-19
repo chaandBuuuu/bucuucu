@@ -23,6 +23,7 @@ public class CarController : NetworkBehaviour
     private SpriteRenderer   _spriteRenderer;
     private PowerupInventory _powerupInventory;
     private TextMeshPro      _nameplateText;  // ✅ Tên người chơi
+    private string           _cachedPlayerName = "";  // ✅ Cache tên người chơi
 
     // ── Networked state ──────────────────────────────────────────────────────
     [Networked] public  bool    IsDrifting    { get; private set; }
@@ -89,6 +90,9 @@ public class CarController : NetworkBehaviour
             playerName = FusionNetworkManager.Instance.GetPlayerName(Object.InputAuthority);
         }
 
+        // ✅ Cache tên người chơi
+        _cachedPlayerName = playerName;
+
         // Tạo GameObject con cho nameplate
         GameObject nameplateGO = new GameObject("Nameplate");
         nameplateGO.transform.SetParent(transform);
@@ -106,6 +110,20 @@ public class CarController : NetworkBehaviour
         _nameplateText.outlineColor = Color.black;
 
         Debug.Log($"[CarController] ✅ Created nameplate: {playerName}");
+    }
+
+    /// <summary>
+    /// ✅ NEW: Lấy tên người chơi (cached từ nameplate)
+    /// </summary>
+    public string GetPlayerName()
+    {
+        if (!string.IsNullOrEmpty(_cachedPlayerName))
+            return _cachedPlayerName;
+        
+        if (Object != null && FusionNetworkManager.Instance != null)
+            return FusionNetworkManager.Instance.GetPlayerName(Object.InputAuthority);
+        
+        return gameObject.name;
     }
 
     public override void FixedUpdateNetwork()

@@ -35,9 +35,8 @@ public class GameEndChatManager : MonoBehaviour
     [SerializeField] private ScrollRect     chatScrollRect;
 
     [Header("Vote")]
-    [SerializeField] private Button   restartButton;
-    [SerializeField] private Button   lobbyButton;
-    [SerializeField] private Button   mainMenuButton;
+    // ✅ MOVED to RaceRankingsDisplay: restartButton, lobbyButton
+    [SerializeField] private Button   mainMenuButton;  // ✅ Only keep Menu button
     [SerializeField] private TMP_Text voteCountText;
 
     [Header("Settings")]
@@ -70,8 +69,7 @@ public class GameEndChatManager : MonoBehaviour
 
         if (chatSendButton != null) chatSendButton.onClick.AddListener(OnSendChat);
         if (chatInputField != null) chatInputField.onSubmit.AddListener(_ => OnSendChat());
-        if (restartButton  != null) restartButton.onClick.AddListener(() => OnVote("restart"));
-        if (lobbyButton    != null) lobbyButton.onClick.AddListener(() => OnVote("lobby"));
+        // ✅ MOVED: Vote buttons now handled by RaceRankingsDisplay
         if (mainMenuButton != null) mainMenuButton.onClick.AddListener(OnMainMenu);
     }
 

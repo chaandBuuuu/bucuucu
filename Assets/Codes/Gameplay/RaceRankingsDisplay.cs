@@ -9,6 +9,7 @@ using System.Linq;
 /// - Hiển thị vị trí người chơi, tốc độ, khoảng cách tới finish
 /// - Update mỗi 0.2s
 /// - Toggle bằng phím TAB
+/// - Chỉ host/server mới có thể Restart
 /// </summary>
 public class RaceRankingsDisplay : MonoBehaviour
 {
@@ -17,6 +18,8 @@ public class RaceRankingsDisplay : MonoBehaviour
     [SerializeField] private GameObject rankingItemPrefab;    // Prefab item (TMP_Text simple)
     [SerializeField] private CanvasGroup panelCanvasGroup;    // CanvasGroup để ẩn/hiện
     [SerializeField] private TextMeshProUGUI titleText;       // "BẢNG XẾP HẠNG" title
+    [SerializeField] private Button restartButton;            // Nút Restart (chỉ host)
+    [SerializeField] private Button menuButton;               // Nút Menu
 
     [Header("Settings")]
     [SerializeField] private KeyCode toggleKey = KeyCode.Tab;
@@ -41,7 +44,21 @@ public class RaceRankingsDisplay : MonoBehaviour
         if (titleText != null)
             titleText.text = "📊 BẢNG XẾP HẠNG";
 
+        // ✅ Gán button listeners
+        if (restartButton != null)
+            restartButton.onClick.AddListener(OnRestartClicked);
+        if (menuButton != null)
+            menuButton.onClick.AddListener(OnMenuClicked);
+
         Debug.Log("[RaceRankingsDisplay] ✅ Initialized");
+    }
+
+    private void OnDestroy()
+    {
+        if (restartButton != null)
+            restartButton.onClick.RemoveListener(OnRestartClicked);
+        if (menuButton != null)
+            menuButton.onClick.RemoveListener(OnMenuClicked);
     }
 
     private void Update()
@@ -174,15 +191,20 @@ public class RaceRankingsDisplay : MonoBehaviour
     private string GetPlayerName(CarController car)
     {
         if (car == null) return "Unknown";
-        if (car.Object == null) return car.name;
 
-        var fusionMgr = FusionNetworkManager.Instance;
-        if (fusionMgr != null)
+        // ✅ Try to get cached player name from CarController
+        try
         {
-            string name = fusionMgr.GetPlayerName(car.Object.InputAuthority);
-            if (!string.IsNullOrEmpty(name)) return name;
+            string name = car.GetPlayerName();
+            if (!string.IsNullOrEmpty(name))
+                return name;
         }
-        return car.name;
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[RaceRankingsDisplay] Lỗi lấy tên: {ex.Message}");
+        }
+        
+        return "Unknown";
     }
 
     public void Show() => SetVisible(true);
@@ -193,5 +215,45 @@ public class RaceRankingsDisplay : MonoBehaviour
         _isVisible = visible;
         if (panelCanvasGroup != null)
             panelCanvasGroup.alpha = visible ? 1f : 0f;
+
+        // ✅ Nếu show, check xem có phải host không để enable Restart button
+        if (visible && restartButton != null)
+        {
+            bool isHost = FusionNetworkManager.Instance?.Runner?.IsServer ?? false;
+            restartButton.interactable = isHost;
+            Debug.Log($"[RaceRankingsDisplay] Restart button interactable: {isHost}");
+        }
+    }
+
+    // ✅ Xử lý khi click Restart button (chỉ host gọi)
+    private void OnRestartClicked()
+    {
+        Debug.Log("[RaceRankingsDisplay] 🔄 Restart clicked");
+
+        var runner = FusionNetworkManager.Instance?.Runner;
+        if (runner == null || !runner.IsServer)
+        {
+            Debug.LogError("[RaceRankingsDisplay] ❌ Chỉ host mới có thể restart!");
+            return;
+        }
+
+        // Gọi RPC restart race
+        if (RaceManager.Instance != null)
+            RaceManager.Instance.RPC_RestartRace();
+    }
+
+    // ✅ Xử lý khi click Menu button
+    private void OnMenuClicked()
+    {
+        Debug.Log("[RaceRankingsDisplay] 🏠 Menu clicked");
+
+        var runner = FusionNetworkManager.Instance?.Runner;
+        if (runner != null)
+        {
+            runner.Shutdown();
+            Debug.Log("[RaceRankingsDisplay] Shutdown Fusion");
+        }
+
+        UnityEngine.SceneManagement.SceneManager.LoadScene("Menu");
     }
 }
