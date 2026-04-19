@@ -81,9 +81,10 @@ public class InputHandler : FusionCallbacksBase
         // FIX: Lắng nghe scene load để re-register
         SceneManager.sceneLoaded += OnSceneLoaded;
         
-        // ✅ REMOVED: Start() coroutine removed - OnSceneLoaded will handle registration
-        // RegisterWhenReady() called in Start() was causing timeout at Menu scene
-        // since Runner doesn't exist yet. OnSceneLoaded will register when needed.
+        // ✅ CRITICAL FIX: Register ngay lập tức - KO timeout
+        // Nếu timeout, input callback sẽ NEVER được register
+        // Dẫn đến car không nhận input → jitter về spawn position
+        StartCoroutine(RegisterWhenReady());
     }
 
     private void OnDestroy()
@@ -114,7 +115,9 @@ public class InputHandler : FusionCallbacksBase
         // Unregister cái cũ trước
         TryUnregister();
 
-        // Register lại
+        // ✅ CRITICAL: Reset flag and re-register
+        // Important: Don't timeout - keep trying until success
+        _isRegistered = false;
         StartCoroutine(RegisterWhenReady());
     }
 
@@ -130,26 +133,17 @@ public class InputHandler : FusionCallbacksBase
 
     private System.Collections.IEnumerator RegisterWhenReady()
     {
-        int maxAttempts = 600; // 10 second timeout (60 frames * 10) - increased for slower connections
-        int attempts = 0;
+        // ✅ CRITICAL FIX: Retry INDEFINITELY instead of timeout
+        // Timeout causes input callback to NEVER register
+        // Leading to car not moving and jittering back to spawn position
         
-        // ✅ FIXED: Chờ Runner tồn tại và có local player
-        // KO cần check IsRunning vì nó có thể chưa ready ngay lúc scene load
-        while (attempts < maxAttempts &&
-               (FusionNetworkManager.Instance?.Runner == null ||
-                FusionNetworkManager.Instance.Runner.LocalPlayer == null))
+        while (FusionNetworkManager.Instance?.Runner == null ||
+               FusionNetworkManager.Instance.Runner.LocalPlayer == null)
         {
-            attempts++;
-            yield return null;
+            yield return null;  // Wait 1 frame and try again
         }
 
-        if (attempts >= maxAttempts)
-        {
-            Debug.LogError("[InputHandler] ❌ TIMEOUT: Runner + LocalPlayer never became available!");
-            yield break;
-        }
-
-        // ✅ FIXED: Kiểm tra chưa register với runner này
+        // ✅ FIXED: Register with runner when ready
         if (!_isRegistered)
         {
             var runner = FusionNetworkManager.Instance.Runner;
