@@ -193,6 +193,11 @@ public class CarController : NetworkBehaviour
     {
         if (IsFinished) return;
 
+        // ✅ CRITICAL FIX: Physics Timestep (0.05s = 20Hz) now matches Network Tick Rate (20Hz)
+        // Problem: Was 50Hz physics vs 20Hz network = desync causing jitter
+        // Solution: Set Fixed Timestep = 0.05 in ProjectSettings/TimeManager.asset
+        // Result: Physics & Network both update at same rate = smooth, synchronized movement
+
         // ✅ NEW: Check if input is enabled
         if (!_inputEnabled)
         {
