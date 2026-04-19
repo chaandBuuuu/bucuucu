@@ -46,8 +46,16 @@ public class RaceUI : MonoBehaviour
             _raceManager.OnRaceEnd += OnRaceEnd;
         }
 
-        if (mainMenuButton != null) mainMenuButton.onClick.AddListener(OnMainMenuClicked);
-        if (restartButton  != null) restartButton .onClick.AddListener(OnRestartClicked);
+        if (mainMenuButton != null) 
+        {
+            mainMenuButton.onClick.AddListener(OnMainMenuClicked);
+            mainMenuButton.gameObject.SetActive(false);  // ✅ Hide during gameplay
+        }
+        if (restartButton != null) 
+        {
+            restartButton.onClick.AddListener(OnRestartClicked);
+            restartButton.gameObject.SetActive(false);  // ✅ Hide during gameplay
+        }
 
         if (raceEndText != null) raceEndText.gameObject.SetActive(false);
         if (raceResultText != null) raceResultText.gameObject.SetActive(false);
@@ -121,6 +129,10 @@ public class RaceUI : MonoBehaviour
         raceEndText.text  = isWinner ? "🏆 YOU WIN!" : $"🥈 {winner.name} won!";
         raceEndText.color = isWinner ? Color.yellow : Color.cyan;
         raceEndText.gameObject.SetActive(true);
+
+        // ✅ NEW: Show buttons when game ends
+        if (mainMenuButton != null) mainMenuButton.gameObject.SetActive(true);
+        if (restartButton != null) restartButton.gameObject.SetActive(true);
     }
 
     private void DisplayFinalResults(List<(CarController car, int position, float time, float distance)> rankings)
@@ -216,6 +228,17 @@ public class RaceUI : MonoBehaviour
         => UnityEngine.SceneManagement.SceneManager.LoadScene("Menu");
 
     private void OnRestartClicked()
-        => UnityEngine.SceneManagement.SceneManager.LoadScene(
-               UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+    {
+        // ✅ UPDATED: Call RaceManager RPC to restart race (reload scene)
+        if (RaceManager.Instance != null)
+        {
+            RaceManager.Instance.RPC_RestartRace();
+        }
+        else
+        {
+            // Fallback if RaceManager not available
+            UnityEngine.SceneManagement.SceneManager.LoadScene(
+                UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
+        }
+    }
 }

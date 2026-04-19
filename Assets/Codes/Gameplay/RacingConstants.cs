@@ -7,8 +7,8 @@ using UnityEngine;
 public static class RacingConstants
 {
     // ── Car Movement ─────────────────────────────────────────────────────────
-    public const float CAR_ACCELERATION              = 8f;
-    public const float CAR_MAX_SPEED                 = 15f;
+    public const float CAR_ACCELERATION              = 12f;    // ✅ INCREASED from 8 → 12 (50% faster)
+    public const float CAR_MAX_SPEED                 = 22f;    // ✅ INCREASED from 15 → 22 (47% faster)
     public const float CAR_FRICTION                  = 0.95f;
     public const float CAR_DRIFT_FRICTION            = 0.92f;
     public const float CAR_ROTATION_SPEED            = 180f;
