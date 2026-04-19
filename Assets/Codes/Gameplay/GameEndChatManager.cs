@@ -7,18 +7,25 @@ using System.Collections.Generic;
 
 /// <summary>
 /// ✅ FIXED GameEndChatManager:
-///   - Restart/BackToLobby dùng RaceManager.RPC_RestartRace / RPC_BackToLobby
-///   - Vote count dùng Runner.ActivePlayers thay vì MaxPlayers cứng
-///   - Vote được sync qua ChatNetworkHandler RPC
-///   - Chỉ host mới thực sự load scene
+///   - Sửa lỗi cú pháp (method nằm trong method)
+///   - Thêm fields rankingsContainer + rankingItemPrefab (public SerializeField)
+///   - RankingItemUI nhận đúng tên người chơi từ FusionNetworkManager
+///   - Restart/Lobby dùng RaceManager RPC
+///   - Vote sync qua GameEndVoteHandler RPC
 /// </summary>
 public class GameEndChatManager : MonoBehaviour
 {
-    [Header("UI References")]
+    public static GameEndChatManager Instance { get; private set; }
+
+    [Header("UI – Tổng quan")]
     [SerializeField] private Canvas       gameEndCanvas;
     [SerializeField] private CanvasGroup  canvasGroup;
     [SerializeField] private TMP_Text     winnerText;
     [SerializeField] private TMP_Text     statsText;
+
+    [Header("Rankings")]
+    [SerializeField] private Transform  rankingsContainer;   // ScrollView Content chứa ranking items
+    [SerializeField] private GameObject rankingItemPrefab;   // Prefab có RankingItemUI component
 
     [Header("Chat")]
     [SerializeField] private Transform      chatMessagesContainer;
@@ -27,7 +34,7 @@ public class GameEndChatManager : MonoBehaviour
     [SerializeField] private Button         chatSendButton;
     [SerializeField] private ScrollRect     chatScrollRect;
 
-    [Header("Vote Buttons")]
+    [Header("Vote")]
     [SerializeField] private Button   restartButton;
     [SerializeField] private Button   lobbyButton;
     [SerializeField] private Button   mainMenuButton;
@@ -39,15 +46,13 @@ public class GameEndChatManager : MonoBehaviour
     [SerializeField] private int   maxMessages    = 20;
 
     // ── Runtime ───────────────────────────────────────────────────────────────
-    public static GameEndChatManager Instance { get; private set; }
-
     private CarController _winner;
-    private bool _isGameEnded = false;
-    private List<(CarController, int, float, float)> _finalRankings;
+    private bool          _isGameEnded = false;
+    private List<(CarController car, int pos, float time, float dist)> _finalRankings;
+    private Dictionary<int, string> _votes       = new Dictionary<int, string>();
+    private int                     _totalPlayers = 1;
 
-    // Vote: key = playerId, value = "restart" | "lobby"
-    private Dictionary<int, string> _votes = new Dictionary<int, string>();
-    private int _totalPlayers = 1;
+    // ─────────────────────────────────────────────────────────────────────────
 
     private void Awake()
     {
@@ -60,17 +65,25 @@ public class GameEndChatManager : MonoBehaviour
         if (gameEndCanvas != null) gameEndCanvas.enabled = false;
         if (canvasGroup   != null) canvasGroup.alpha     = 0f;
 
-        if (RaceManager.Instance != null)
-        {
-            RaceManager.Instance.OnRaceEnd       += OnRaceEnd;
-            RaceManager.Instance.OnFinalRankings += OnFinalRankings;
-        }
+        // Subscribe events (RaceManager có thể chưa spawn ngay)
+        StartCoroutine(SubscribeWhenReady());
 
-        if (chatSendButton  != null) chatSendButton.onClick.AddListener(OnSendChat);
-        if (chatInputField  != null) chatInputField.onSubmit.AddListener(_ => OnSendChat());
-        if (restartButton   != null) restartButton.onClick.AddListener(() => OnVote("restart"));
-        if (lobbyButton     != null) lobbyButton.onClick.AddListener(() => OnVote("lobby"));
-        if (mainMenuButton  != null) mainMenuButton.onClick.AddListener(OnMainMenu);
+        if (chatSendButton != null) chatSendButton.onClick.AddListener(OnSendChat);
+        if (chatInputField != null) chatInputField.onSubmit.AddListener(_ => OnSendChat());
+        if (restartButton  != null) restartButton.onClick.AddListener(() => OnVote("restart"));
+        if (lobbyButton    != null) lobbyButton.onClick.AddListener(() => OnVote("lobby"));
+        if (mainMenuButton != null) mainMenuButton.onClick.AddListener(OnMainMenu);
+    }
+
+    private IEnumerator SubscribeWhenReady()
+    {
+        // Chờ RaceManager spawn xong (NetworkBehaviour)
+        while (RaceManager.Instance == null)
+            yield return new WaitForSeconds(0.2f);
+
+        RaceManager.Instance.OnRaceEnd       += OnRaceEnd;
+        RaceManager.Instance.OnFinalRankings += OnFinalRankings;
+        Debug.Log("[GameEndChatManager] ✅ Subscribed to RaceManager events");
     }
 
     private void OnDestroy()
@@ -87,12 +100,12 @@ public class GameEndChatManager : MonoBehaviour
 
     private void OnRaceEnd(CarController winner)
     {
-        _winner    = winner;
+        _winner      = winner;
         _isGameEnded = true;
+        _votes.Clear();
 
         GameInputLocker.Instance?.LockInput(true);
 
-        // Lấy số player thực tế
         var runner = FusionNetworkManager.Instance?.Runner;
         if (runner != null)
         {
@@ -100,12 +113,15 @@ public class GameEndChatManager : MonoBehaviour
             foreach (var _ in runner.ActivePlayers) _totalPlayers++;
         }
 
+        UpdateVoteDisplay();
         StartCoroutine(ShowUI());
     }
 
     private void OnFinalRankings(List<(CarController, int, float, float)> rankings)
     {
-        _finalRankings = rankings;
+        // Convert to named tuple
+        _finalRankings = new List<(CarController, int, float, float)>();
+        foreach (var r in rankings) _finalRankings.Add(r);
         UpdateStats();
     }
 
@@ -119,7 +135,8 @@ public class GameEndChatManager : MonoBehaviour
         while (elapsed < fadeInDuration)
         {
             elapsed += Time.deltaTime;
-            if (canvasGroup != null) canvasGroup.alpha = Mathf.Clamp01(elapsed / fadeInDuration);
+            if (canvasGroup != null)
+                canvasGroup.alpha = Mathf.Clamp01(elapsed / fadeInDuration);
             yield return null;
         }
         if (canvasGroup != null) canvasGroup.alpha = 1f;
@@ -127,16 +144,72 @@ public class GameEndChatManager : MonoBehaviour
 
     private void UpdateStats()
     {
+        // Winner text
         if (_winner != null && winnerText != null)
-            winnerText.text = $"🏆 {_winner.name} Chiến Thắng!";
+        {
+            string winnerName = GetPlayerDisplayName(_winner);
+            winnerText.text = $"🏆 {winnerName} Chiến Thắng!";
+        }
 
+        // Stats text (plain text summary)
         if (_finalRankings != null && statsText != null)
         {
             string s = "📊 Bảng Xếp Hạng:\n";
             foreach (var (car, pos, time, dist) in _finalRankings)
-                s += $"{pos}. {car.name} – {time:F1}s\n";
+                s += $"{pos}. {GetPlayerDisplayName(car)} – {time:F1}s\n";
             statsText.text = s;
         }
+
+        // ✅ Ranking items UI
+        if (_finalRankings != null && rankingsContainer != null && rankingItemPrefab != null)
+        {
+            // Xoá items cũ
+            foreach (Transform child in rankingsContainer)
+                Destroy(child.gameObject);
+
+            // Tạo item mới cho từng ranking
+            foreach (var (car, pos, time, dist) in _finalRankings)
+            {
+                var go = Instantiate(rankingItemPrefab, rankingsContainer);
+                go.SetActive(true);
+
+                var ui = go.GetComponent<RankingItemUI>();
+                if (ui != null)
+                {
+                    // ✅ FIX: Dùng tên người chơi thực, không phải car.name
+                    string playerName = GetPlayerDisplayName(car);
+                    ui.Initialize(pos, playerName, time);
+                }
+                else
+                {
+                    Debug.LogError("[GameEndChatManager] rankingItemPrefab thiếu RankingItemUI component!");
+                }
+            }
+        }
+        else if (rankingsContainer == null)
+        {
+            Debug.LogWarning("[GameEndChatManager] rankingsContainer chưa gán trong Inspector!");
+        }
+        else if (rankingItemPrefab == null)
+        {
+            Debug.LogWarning("[GameEndChatManager] rankingItemPrefab chưa gán trong Inspector!");
+        }
+    }
+
+    /// <summary>
+    /// ✅ Lấy tên người chơi từ FusionNetworkManager thay vì dùng car.name
+    /// </summary>
+    private string GetPlayerDisplayName(CarController car)
+    {
+        if (car == null) return "Unknown";
+        if (car.Object == null) return car.name;
+
+        if (FusionNetworkManager.Instance != null)
+        {
+            string name = FusionNetworkManager.Instance.GetPlayerName(car.Object.InputAuthority);
+            if (!string.IsNullOrEmpty(name)) return name;
+        }
+        return car.name;
     }
 
     #endregion
@@ -152,7 +225,6 @@ public class GameEndChatManager : MonoBehaviour
         string name = FusionNetworkManager.Instance?.GetStoredPlayerName() ?? "Player";
         chatInputField.text = "";
 
-        // Dùng ChatNetworkHandler để broadcast
         if (ChatNetworkHandler.Instance != null)
             ChatNetworkHandler.Instance.RPC_Broadcast(name, $"[END] {msg}");
         else
@@ -189,20 +261,21 @@ public class GameEndChatManager : MonoBehaviour
         var runner = FusionNetworkManager.Instance?.Runner;
         if (runner == null) return;
 
-        int playerId = runner.LocalPlayer.PlayerId;
-        _votes[playerId] = voteType;
+        int    playerId = runner.LocalPlayer.PlayerId;
+        string name     = FusionNetworkManager.Instance?.GetStoredPlayerName() ?? "Player";
 
-        string name = FusionNetworkManager.Instance?.GetStoredPlayerName() ?? "Player";
-
-        // Broadcast vote qua chat
+        // Broadcast thông báo vote qua chat
         if (ChatNetworkHandler.Instance != null)
             ChatNetworkHandler.Instance.RPC_Broadcast("System", $"🗳️ {name} voted: {voteType}");
 
-        // ✅ Sync vote count qua RPC
+        // Sync vote tới tất cả clients
         if (GameEndVoteHandler.Instance != null)
             GameEndVoteHandler.Instance.RPC_RegisterVote(playerId, voteType);
-
-        UpdateVoteDisplay();
+        else
+        {
+            // Fallback nếu VoteHandler chưa spawn
+            RegisterRemoteVote(playerId, voteType);
+        }
     }
 
     public void RegisterRemoteVote(int playerId, string voteType)
@@ -216,40 +289,35 @@ public class GameEndChatManager : MonoBehaviour
     {
         if (voteCountText == null) return;
 
-        int restartCount = 0, lobbyCount = 0;
+        int r = 0, l = 0;
         foreach (var v in _votes.Values)
         {
-            if (v == "restart") restartCount++;
-            else if (v == "lobby") lobbyCount++;
+            if (v == "restart") r++;
+            else if (v == "lobby") l++;
         }
-
-        voteCountText.text = $"🔄 Restart: {restartCount}/{_totalPlayers}  🏠 Lobby: {lobbyCount}/{_totalPlayers}";
+        voteCountText.text = $"🔄 Restart: {r}/{_totalPlayers}  🏠 Lobby: {l}/{_totalPlayers}";
     }
 
     private void CheckVoteResult()
     {
-        // Majority vote
-        int restartCount = 0, lobbyCount = 0;
+        int r = 0, l = 0;
         foreach (var v in _votes.Values)
         {
-            if (v == "restart") restartCount++;
-            else if (v == "lobby") lobbyCount++;
+            if (v == "restart") r++;
+            else if (v == "lobby") l++;
         }
 
         int majority = Mathf.CeilToInt(_totalPlayers / 2f);
-
-        if (restartCount >= majority)
-            ExecuteRestart();
-        else if (lobbyCount >= majority)
-            ExecuteBackToLobby();
+        if      (r >= majority) ExecuteRestart();
+        else if (l >= majority) ExecuteBackToLobby();
     }
 
     private void ExecuteRestart()
     {
-        Debug.Log("[GameEndChatManager] ✅ Majority voted restart");
+        Debug.Log("[GameEndChatManager] ✅ Restart voted");
         GameInputLocker.Instance?.LockInput(false);
+        _isGameEnded = false;
 
-        // ✅ Chỉ host load scene
         var runner = FusionNetworkManager.Instance?.Runner;
         if (runner != null && runner.IsServer)
             RaceManager.Instance?.RPC_RestartRace();
@@ -257,8 +325,9 @@ public class GameEndChatManager : MonoBehaviour
 
     private void ExecuteBackToLobby()
     {
-        Debug.Log("[GameEndChatManager] ✅ Majority voted lobby");
+        Debug.Log("[GameEndChatManager] ✅ Back to Lobby voted");
         GameInputLocker.Instance?.LockInput(false);
+        _isGameEnded = false;
 
         var runner = FusionNetworkManager.Instance?.Runner;
         if (runner != null && runner.IsServer)
@@ -269,9 +338,36 @@ public class GameEndChatManager : MonoBehaviour
     {
         Debug.Log("[GameEndChatManager] Main Menu");
         GameInputLocker.Instance?.LockInput(false);
+        _isGameEnded = false;
+
+        // Shutdown Fusion trước khi load menu
+        var runner = FusionNetworkManager.Instance?.Runner;
+        if (runner != null) runner.Shutdown();
+
         UnityEngine.SceneManagement.SceneManager.LoadScene("Menu");
     }
 
     #endregion
-}
 
+    // ─────────────────────────────────────────────────────────────────────────
+    #region Reset (gọi khi scene reload)
+
+    /// <summary>Gọi khi restart race để reset state UI</summary>
+    public void ResetForNewRace()
+    {
+        _winner      = null;
+        _isGameEnded = false;
+        _finalRankings = null;
+        _votes.Clear();
+
+        if (gameEndCanvas != null) gameEndCanvas.enabled = false;
+        if (canvasGroup   != null) canvasGroup.alpha     = 0f;
+
+        // Xoá ranking items cũ
+        if (rankingsContainer != null)
+            foreach (Transform child in rankingsContainer)
+                Destroy(child.gameObject);
+    }
+
+    #endregion
+}
