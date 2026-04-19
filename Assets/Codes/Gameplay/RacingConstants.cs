@@ -7,12 +7,12 @@ using UnityEngine;
 public static class RacingConstants
 {
     // ── Car Movement ─────────────────────────────────────────────────────────
-    public const float CAR_ACCELERATION              = 12f;    // ✅ INCREASED from 8 → 12 (50% faster)
-    public const float CAR_MAX_SPEED                 = 22f;    // ✅ INCREASED from 15 → 22 (47% faster)
+    public const float CAR_ACCELERATION              = 8f;     // ✅ REDUCED from 12 → 8 (network can handle better)
+    public const float CAR_MAX_SPEED                 = 15f;    // ✅ REDUCED from 22 → 15 (network sync faster)
     public const float CAR_FRICTION                  = 0.95f;
-    public const float CAR_DRIFT_FRICTION            = 0.85f;   // ✅ REDUCED from 0.92 → 0.85 (less momentum = better control when drifting)
-    public const float CAR_ROTATION_SPEED            = 180f;
-    public const float CAR_DRIFT_ROTATION_MULTIPLIER = 2.2f;    // ✅ INCREASED from 1.5 → 2.2 (2.2x faster steering = quicker recovery from drift)
+    public const float CAR_DRIFT_FRICTION            = 0.85f;   // ✅ Drift friction (less momentum = better control)
+    public const float CAR_ROTATION_SPEED            = 150f;   // ✅ REDUCED from 180 → 150 (match with slower movement speed)
+    public const float CAR_DRIFT_ROTATION_MULTIPLIER = 2.0f;    // ✅ REDUCED from 2.2 → 2.0 (match with reduced rotation speed)
 
     // ── Race Configuration ───────────────────────────────────────────────────
     public const int RACE_LAPS_TO_WIN = 1;  // ✅ FIX: 1 lap = First to cross finish line wins

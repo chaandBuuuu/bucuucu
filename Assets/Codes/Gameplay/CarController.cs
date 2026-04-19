@@ -45,6 +45,7 @@ public class CarController : NetworkBehaviour
     private float   _currentRotation = 0f;
     private bool    _isDrifting      = false;
     private bool    _inputEnabled    = true;  // ✅ NEW: Lock/unlock input
+    private Vector3 _previousPos     = Vector3.zero;  // ✅ FIX: Track position for remote car velocity calculation
 
     public event System.Action<int> OnLapCompleted;
     public event System.Action      OnRaceFinished;
@@ -65,6 +66,7 @@ public class CarController : NetworkBehaviour
         // ✅ DISABLED: _powerupInventory = GetComponent<PowerupInventory>() ?? gameObject.AddComponent<PowerupInventory>();
 
         _localVelocity   = Vector2.zero;
+        _previousPos     = transform.position;  // ✅ FIX: Initialize previous position for remote car velocity calc
         _currentRotation = transform.rotation.eulerAngles.z;
         SpeedMultiplier  = 1f;
 
@@ -83,13 +85,12 @@ public class CarController : NetworkBehaviour
         }
         else
         {
-            // ✅ FIX: Use Kinematic for remote cars
-            // NetworkTransform updates position directly (not via velocity)
-            // Kinematic + Simulated: true = collisions work without physics simulation
-            _rb.bodyType  = RigidbodyType2D.Kinematic;
+            // ✅ FIX: Change to Dynamic for proper velocity-based movement
+            // NetworkTransform updates position; Dynamic rigidbody calculates velocity from position delta
+            _rb.bodyType  = RigidbodyType2D.Dynamic;
             _rb.simulated = true;  // Enable physics simulation để collide với obstacles
             _rb.constraints = RigidbodyConstraints2D.FreezeRotation;
-            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name} | Physics: Kinematic, Simulated: True, Position: NetworkTransform");
+            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name} | Physics: Dynamic, Simulated: True, Velocity: Position-based");
         }
     }
 
@@ -222,8 +223,14 @@ public class CarController : NetworkBehaviour
             }
         }
         // ── REMOTE CARS (Joined Players) ─────────────────────────────────────
-        // ✅ FIX: Remote cars are Kinematic - NetworkTransform fully controls position
-        // No manual velocity application needed - this was causing jitter!
+        else
+        {
+            // ✅ FIX: Calculate velocity from position delta (NetworkTransform updates position)
+            // This creates smooth interpolation instead of "jumping" between positions
+            Vector2 deltaPos = (Vector2)(transform.position - _previousPos);
+            _rb.linearVelocity = deltaPos * Runner.TickRate;
+            _previousPos = transform.position;
+        }
     }
 
     private void HandleMovement(NetworkInputData input)
