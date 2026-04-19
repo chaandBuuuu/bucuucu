@@ -77,19 +77,14 @@ public class CarController : NetworkBehaviour
         // Authority setup cho Rigidbody
         if (HasInputAuthority)
         {
-            // ✅ Local car: Dynamic physics with free movement
             _rb.bodyType       = RigidbodyType2D.Dynamic;
-            _rb.constraints    = RigidbodyConstraints2D.FreezeRotation;  // Only freeze rotation
             _rb.linearVelocity = Vector2.zero;
-            Debug.Log($"[CarController] ✅ Spawned AUTHORITY (physics enabled) - {gameObject.name}");
+            Debug.Log($"[CarController] ✅ Spawned AUTHORITY - {gameObject.name}");
         }
         else
         {
-            // ✅ Remote car: Dynamic with FULL freeze (NetworkTransform will handle position)
-            _rb.bodyType       = RigidbodyType2D.Dynamic;
-            _rb.constraints    = RigidbodyConstraints2D.FreezeAll;  // Let NetworkTransform manage position/rotation
-            _rb.linearVelocity = Vector2.zero;
-            Debug.Log($"[CarController] ✅ Spawned REMOTE (NetworkTransform sync) - {gameObject.name}");
+            _rb.bodyType       = RigidbodyType2D.Kinematic;   // Remote car dùng NetworkTransform
+            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name}");
         }
     }
 
@@ -217,14 +212,6 @@ public class CarController : NetworkBehaviour
             HandleMovement(input);
             HandlePowerup(input);
         }
-        else
-        {
-            // ✅ FIXED: Log warning if no input received for authority
-            if (HasInputAuthority)
-            {
-                Debug.LogWarning($"[CarController] ⚠️ GetInput() returned false for authority player {Object?.InputAuthority}");
-            }
-        }
 
         // ✅ Only apply velocity on simulating machine (owner + server)
         if (HasInputAuthority || HasStateAuthority)
@@ -249,13 +236,8 @@ public class CarController : NetworkBehaviour
         // ✅ FIX: Apply friction ONLY when NOT accelerating (coasting to stop)
         if (moveDir.magnitude > 0.01f)
         {
-            // 🏎️ ACCELERATE: Smooth direction blending to avoid snap when turning
-            // When moving perpendicular, blend old direction → new direction smoothly
-            Vector2 currentDir = _localVelocity.magnitude > 0.1f ? _localVelocity.normalized : moveDir.normalized;
-            Vector2 blendedDir = Vector2.Lerp(currentDir, moveDir.normalized, RacingConstants.CAR_DIRECTION_SMOOTHING);
-            
-            // Apply acceleration along blended direction
-            _localVelocity += blendedDir * acceleration * Runner.DeltaTime;
+            // 🏎️ ACCELERATE: No friction resistance when actively moving
+            _localVelocity += moveDir.normalized * acceleration * Runner.DeltaTime;
             _localVelocity  = Vector2.ClampMagnitude(_localVelocity, effectiveMaxSpeed);
 
             // ✅ NEW: Reactive grip when drifting + steering

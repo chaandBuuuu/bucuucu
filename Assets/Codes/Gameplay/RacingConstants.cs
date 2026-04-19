@@ -12,8 +12,7 @@ public static class RacingConstants
     public const float CAR_FRICTION                  = 0.95f;
     public const float CAR_DRIFT_FRICTION            = 0.85f;   // ✅ REDUCED from 0.92 → 0.85 (less momentum = better control when drifting)
     public const float CAR_ROTATION_SPEED            = 180f;
-    public const float CAR_DRIFT_ROTATION_MULTIPLIER = 1.8f;    // ✅ ADJUSTED from 2.2 → 1.8 (more responsive but not snappy)
-    public const float CAR_DIRECTION_SMOOTHING       = 0.35f;   // ✅ INCREASED from 0.15 → 0.35 (blend 35% new direction = better turning)
+    public const float CAR_DRIFT_ROTATION_MULTIPLIER = 2.2f;    // ✅ INCREASED from 1.5 → 2.2 (2.2x faster steering = quicker recovery from drift)
 
     // ── Race Configuration ───────────────────────────────────────────────────
     public const int RACE_LAPS_TO_WIN = 1;  // ✅ FIX: 1 lap = First to cross finish line wins

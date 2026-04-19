@@ -35,62 +35,34 @@ public class AudioManager : MonoBehaviour
     private AudioClip _targetClip;
 
     /// <summary>
-    /// ✅ FIXED: Robust singleton - prevents multiple instances even with race conditions
+    /// ✅ NEW: Tự động tạo AudioManager nếu chưa tồn tại
     /// </summary>
     public static void EnsureExists()
     {
-        // Double-check lock pattern to prevent race conditions
-        if (Instance != null)
-        {
-            Debug.Log($"[AudioManager] ✅ Instance already exists: {Instance.gameObject.name}");
-            return;
-        }
+        if (Instance != null) return;
 
-        // Search for existing instance in scene
         var existingAM = FindAnyObjectByType<AudioManager>();
         if (existingAM != null)
         {
             Instance = existingAM;
-            Debug.Log($"[AudioManager] ✅ Found existing instance: {existingAM.gameObject.name}");
             return;
         }
 
-        // Create new only if truly doesn't exist
+        // Tạo mới nếu chưa có
         var go = new GameObject("AudioManager");
-        var audioManager = go.AddComponent<AudioManager>();
-        // Instance is set in Awake, no need to set manually here
+        Instance = go.AddComponent<AudioManager>();
         Debug.Log("[AudioManager] ✅ Created new AudioManager instance");
     }
 
     private void Awake()
     {
-        // ✅ FIXED: Prevent duplicate instances more robustly
-        var existingInstance = FindAnyObjectByType<AudioManager>();
-        
-        // If another AudioManager exists and it's not us
-        if (existingInstance != null && existingInstance != this)
-        {
-            Debug.LogWarning($"[AudioManager] ⚠️ Destroying duplicate AudioManager. Existing: {existingInstance.gameObject.name}, This: {gameObject.name}");
-            Destroy(gameObject);
-            return;
-        }
-        
-        // Set as singleton instance
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
         DontDestroyOnLoad(gameObject);
-        Debug.Log($"[AudioManager] ✅ Singleton instance set: {gameObject.name}");
     }
 
     private void Start()
     {
-        // ✅ FIXED: Add safety check to ensure we're the active singleton
-        if (Instance != this)
-        {
-            Debug.LogWarning($"[AudioManager] ⚠️ This instance is not the singleton! Destroying. Singleton: {Instance?.gameObject.name ?? "NULL"}, This: {gameObject.name}");
-            Destroy(gameObject);
-            return;
-        }
-
         // Tạo audio sources nếu chưa có
         if (musicSource == null)
         {
@@ -121,8 +93,6 @@ public class AudioManager : MonoBehaviour
         // ✅ NEW: Auto load music clips từ Resources nếu chưa assign
         TryLoadMusicClips();
 
-        // ✅ FIXED: Unsubscribe first to prevent duplicate subscriptions when joining
-        SceneManager.sceneLoaded -= OnSceneLoaded;
         // ✅ NEW: Listen to scene changes
         SceneManager.sceneLoaded += OnSceneLoaded;
 
@@ -130,8 +100,6 @@ public class AudioManager : MonoBehaviour
         var raceManager = RaceManager.Instance;
         if (raceManager != null)
         {
-            raceManager.OnRaceStart -= () => ChangeMusic(GameState.Racing);
-            raceManager.OnRaceEnd -= (winner) => ChangeMusic(GameState.Victory);
             raceManager.OnRaceStart += () => ChangeMusic(GameState.Racing);
             raceManager.OnRaceEnd += (winner) => ChangeMusic(GameState.Victory);
             Debug.Log("[AudioManager] ✅ Subscribed to RaceManager events");
@@ -147,12 +115,7 @@ public class AudioManager : MonoBehaviour
 
     private void OnDestroy()
     {
-        // ✅ FIXED: Only unsubscribe if we're the active singleton
-        if (Instance == this)
-        {
-            SceneManager.sceneLoaded -= OnSceneLoaded;
-            Debug.Log("[AudioManager] ✅ Unsubscribed from scene load events");
-        }
+        SceneManager.sceneLoaded -= OnSceneLoaded;
     }
 
     /// <summary>
@@ -197,13 +160,6 @@ public class AudioManager : MonoBehaviour
     /// </summary>
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        // ✅ FIXED: Only process if we're the active singleton
-        if (Instance != this)
-        {
-            Debug.LogWarning($"[AudioManager] ⚠️ OnSceneLoaded called on non-singleton instance. Ignoring.");
-            return;
-        }
-
         Debug.Log($"[AudioManager] 🎬 OnSceneLoaded triggered | Scene: {scene.name}");
 
         // Map scene name → music state
@@ -223,9 +179,13 @@ public class AudioManager : MonoBehaviour
             var raceManager = RaceManager.Instance;
             if (raceManager != null)
             {
-                // ✅ FIXED: Unsubscribe cái cũ trước (nếu có) - do this at RaceManager level
-                // We'll add a method to handle this properly
-                Debug.Log("[AudioManager] ✅ Ready for RaceManager events in Racing scene");
+                // Unsubscribe cái cũ trước (nếu có)
+                raceManager.OnRaceStart -= () => ChangeMusic(GameState.Racing);
+                // Subscribe lại
+                raceManager.OnRaceStart += () => ChangeMusic(GameState.Racing);
+                raceManager.OnRaceEnd -= (winner) => ChangeMusic(GameState.Victory);
+                raceManager.OnRaceEnd += (winner) => ChangeMusic(GameState.Victory);
+                Debug.Log("[AudioManager] ✅ Re-subscribed to RaceManager events");
             }
             else
             {
