@@ -46,6 +46,7 @@ public class CarController : NetworkBehaviour
     private float   _currentRotation = 0f;
     private bool    _isDrifting      = false;
     private bool    _inputEnabled    = true;  // ✅ NEW: Lock/unlock input
+    private Vector2 _targetNetworkVelocity = Vector2.zero;  // ✅ NEW: Smooth velocity lerp for remote cars
 
     public event System.Action<int> OnLapCompleted;
     public event System.Action      OnRaceFinished;
@@ -182,6 +183,18 @@ public class CarController : NetworkBehaviour
         _driftBrakeAudioSource.spatialBlend = 0f;  // 2D audio
 
         Debug.Log("[CarController] ✅ Audio sources setup completed");
+    }
+
+    // ✅ NEW: Update method to handle remote car smooth velocity application
+    private void Update()
+    {
+        // Apply NetworkVelocity to remote cars (Kinematic) for smooth movement
+        if (!HasInputAuthority && !HasStateAuthority && _rb.bodyType == RigidbodyType2D.Kinematic)
+        {
+            // ✅ Smooth lerp velocity instead of direct assignment
+            _targetNetworkVelocity = Vector2.Lerp(_targetNetworkVelocity, NetworkVelocity, Time.deltaTime * 5f);
+            _rb.linearVelocity = _targetNetworkVelocity;
+        }
     }
 
     public override void FixedUpdateNetwork()
@@ -363,18 +376,6 @@ public class CarController : NetworkBehaviour
         SpeedMultiplier = multiplier;
         yield return new WaitForSeconds(duration);
         SpeedMultiplier = 1f;
-    }
-
-    // ✅ NEW: Client-side extrapolation for remote cars smooth motion
-    private void LateUpdate()
-    {
-        // Remote cars (non-authority) extrapolate position smooth based on NetworkVelocity
-        if (!HasInputAuthority && !HasStateAuthority && NetworkVelocity.magnitude > 0.1f)
-        {
-            // Predict position based on networked velocity
-            Vector3 predictedPos = transform.position + (Vector3)NetworkVelocity * Time.deltaTime;
-            transform.position = predictedPos;
-        }
     }
 
     // ── RPCs ─────────────────────────────────────────────────────────────────
