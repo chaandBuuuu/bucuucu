@@ -80,7 +80,10 @@ public class InputHandler : FusionCallbacksBase
 
         // FIX: Lắng nghe scene load để re-register
         SceneManager.sceneLoaded += OnSceneLoaded;
-        StartCoroutine(RegisterWhenReady());
+        
+        // ✅ REMOVED: Start() coroutine removed - OnSceneLoaded will handle registration
+        // RegisterWhenReady() called in Start() was causing timeout at Menu scene
+        // since Runner doesn't exist yet. OnSceneLoaded will register when needed.
     }
 
     private void OnDestroy()
