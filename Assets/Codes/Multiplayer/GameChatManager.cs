@@ -2,248 +2,139 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using Fusion;
+using System.Collections;
 using System.Collections.Generic;
 
 /// <summary>
-/// ✅ Global Chat System - Available throughout game (Lobby, Racing, etc.)
-/// - Players can chat from when they join room until end of game
-/// - Synced across all players via ChatNetworkHandler RPC
-/// - Shows player name, message content
+/// ✅ FIXED GameChatManager:
+///   - ChatNetworkHandler được spawn như NetworkObject riêng (không gắn vào Runner)
+///   - RPC hoạt động đúng trên cả host lẫn client
+///   - T để toggle chat
 /// </summary>
 public class GameChatManager : MonoBehaviour
 {
     public static GameChatManager Instance { get; private set; }
 
     [Header("UI References")]
-    [SerializeField] private Transform chatMessagesContainer;
-    [SerializeField] private GameObject chatMessagePrefab;
-    [SerializeField] private TMP_InputField chatInputField;
-    [SerializeField] private Button chatSendButton;
-    [SerializeField] private ScrollRect chatScrollRect;
-    [SerializeField] private CanvasGroup chatPanelCanvasGroup;  // For toggling chat visibility
+    [SerializeField] private Transform       chatMessagesContainer;
+    [SerializeField] private GameObject      chatMessagePrefab;
+    [SerializeField] private TMP_InputField  chatInputField;
+    [SerializeField] private Button          chatSendButton;
+    [SerializeField] private ScrollRect      chatScrollRect;
+    [SerializeField] private CanvasGroup     chatPanelCanvasGroup;
 
     [Header("Settings")]
-    [SerializeField] private int maxChatMessages = 30;
+    [SerializeField] private int  maxChatMessages  = 30;
     [SerializeField] private bool startChatEnabled = true;
 
-    private List<ChatMessage> _chatMessages = new List<ChatMessage>();
-    private ChatNetworkHandler _networkHandler;
-    private bool _isInitialized = false;
-
-    private struct ChatMessage
-    {
-        public string playerName;
-        public string message;
-        public float timestamp;
-    }
+    private List<string> _chatLog = new List<string>();
 
     private void Awake()
     {
-        if (Instance != null && Instance != this)
-        {
-            Destroy(gameObject);
-            return;
-        }
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
         Instance = this;
     }
 
     private void Start()
     {
-        Initialize();
-    }
-
-    private void Initialize()
-    {
-        if (_isInitialized) return;
-
-        // Find or create network handler
-        _networkHandler = FindAnyObjectByType<ChatNetworkHandler>();
-        if (_networkHandler == null)
-        {
-            // Create network handler if doesn't exist
-            var runnerObj = FindAnyObjectByType<NetworkRunner>();
-            if (runnerObj != null)
-            {
-                _networkHandler = runnerObj.gameObject.AddComponent<ChatNetworkHandler>();
-                Debug.Log("[GameChatManager] Created ChatNetworkHandler");
-            }
-            else
-            {
-                Debug.LogWarning("[GameChatManager] NetworkRunner not found");
-                return;
-            }
-        }
-
-        // Link network handler to this manager
-        _networkHandler.SetChatManager(this);
-
-        // Setup chat UI references
-        if (chatSendButton != null)
-            chatSendButton.onClick.AddListener(OnSendChatMessage);
-
-        if (chatInputField != null)
-        {
-            chatInputField.onSubmit.AddListener(_ => OnSendChatMessage());
-        }
-
-        if (chatPanelCanvasGroup != null)
-            chatPanelCanvasGroup.alpha = startChatEnabled ? 1f : 0f;
-
-        _isInitialized = true;
-        Debug.Log("[GameChatManager] ✅ Initialized and ready for chat");
+        Debug.Log($"[GameChatManager] ✅ Started - Container={chatMessagesContainer != null}, Prefab={chatMessagePrefab != null}, Input={chatInputField != null}, Button={chatSendButton != null}");
+        
+        if (chatSendButton  != null) chatSendButton.onClick.AddListener(OnSendClicked);
+        if (chatInputField  != null) chatInputField.onSubmit.AddListener(_ => OnSendClicked());
+        if (chatPanelCanvasGroup != null) chatPanelCanvasGroup.alpha = startChatEnabled ? 1f : 0f;
     }
 
     private void Update()
     {
-        if (!_isInitialized)
-            Initialize();
-
-        // Toggle chat visibility with T key
         if (Input.GetKeyDown(KeyCode.T) && chatPanelCanvasGroup != null)
-        {
             chatPanelCanvasGroup.alpha = chatPanelCanvasGroup.alpha > 0.5f ? 0f : 1f;
-        }
     }
 
-    /// <summary>
-    /// Send chat message to all players
-    /// </summary>
-    private void OnSendChatMessage()
+    private void OnSendClicked()
     {
         if (chatInputField == null || string.IsNullOrEmpty(chatInputField.text))
+        {
+            Debug.LogWarning("[GameChatManager] ⚠️ InputField is null or text is empty");
             return;
+        }
 
-        string message = chatInputField.text;
+        string msg     = chatInputField.text.Trim();
+        string name    = FusionNetworkManager.Instance?.GetStoredPlayerName() ?? "Player";
         chatInputField.text = "";
         chatInputField.ActivateInputField();
 
-        if (_networkHandler == null)
+        Debug.Log($"[GameChatManager] 📤 Sending: {name}: {msg}");
+
+        // ✅ Gửi qua ChatNetworkHandler (NetworkObject được spawn sẵn)
+        if (ChatNetworkHandler.Instance != null)
         {
-            Debug.LogWarning("[GameChatManager] Network handler not available");
-            return;
+            ChatNetworkHandler.Instance.SendChat(name, msg);
+            Debug.Log($"[GameChatManager] ✅ Sent via ChatNetworkHandler");
         }
-
-        // Get player name
-        string playerName = FusionNetworkManager.Instance?.GetStoredPlayerName() ?? "Player";
-
-        // Send via network handler (will call RPC)
-        _networkHandler.SendChatMessage(playerName, message);
-
-        Debug.Log($"[GameChatManager] Message sent: {playerName}: {message}");
+        else
+        {
+            Debug.LogWarning("[GameChatManager] ⚠️ ChatNetworkHandler.Instance is NULL! Using fallback...");
+            AddMessageLocal(name, msg);   // Fallback nếu không có network
+        }
     }
 
     /// <summary>
-    /// Add chat message to local display (called by ChatNetworkHandler)
+    /// Gọi bởi ChatNetworkHandler.RPC_Broadcast → chạy trên tất cả clients
     /// </summary>
-    public void AddChatMessageLocal(string playerName, string message)
+    public void AddMessageLocal(string playerName, string message)
     {
-        if (chatMessagesContainer == null || chatMessagePrefab == null)
+        // ✅ Debug: kiểm tra references
+        if (chatMessagesContainer == null)
+        {
+            Debug.LogError("[GameChatManager] ❌ chatMessagesContainer is NULL! Assign it in inspector.");
             return;
-
-        // Store message
-        _chatMessages.Add(new ChatMessage
+        }
+        if (chatMessagePrefab == null)
         {
-            playerName = playerName,
-            message = message,
-            timestamp = Time.time
-        });
-
-        // Instantiate UI
-        GameObject msgGO = Instantiate(chatMessagePrefab, chatMessagesContainer);
-        var msgUI = msgGO.GetComponent<ChatMessageUI>();
-
-        if (msgUI != null)
-        {
-            msgUI.Initialize(playerName, message);
+            Debug.LogError("[GameChatManager] ❌ chatMessagePrefab is NULL! Assign it in inspector.");
+            return;
         }
 
-        // Limit messages
+        _chatLog.Add($"{playerName}: {message}");
+        Debug.Log($"[GameChatManager] ✅ Adding message: {playerName}: {message}");
+        Debug.Log($"[GameChatManager] Content current children: {chatMessagesContainer.childCount}");
+
+        var go  = Instantiate(chatMessagePrefab, chatMessagesContainer);
+        Debug.Log($"[GameChatManager] ✅ Prefab instantiated. New child count: {chatMessagesContainer.childCount}");
+        
+        var ui  = go.GetComponent<ChatMessageUI>();
+        if (ui != null)
+        {
+            ui.Initialize(playerName, message);
+            Debug.Log($"[GameChatManager] ✅ ChatMessageUI initialized");
+        }
+        else
+        {
+            Debug.LogError("[GameChatManager] ❌ ChatMessageUI component not found on prefab!");
+        }
+
+        // Giới hạn số tin nhắn
         while (chatMessagesContainer.childCount > maxChatMessages)
-        {
-            if (chatMessagesContainer.childCount > 0)
-            {
-                Destroy(chatMessagesContainer.GetChild(0).gameObject);
-            }
-        }
+            Destroy(chatMessagesContainer.GetChild(0).gameObject);
 
-        // Auto-scroll to bottom
+        // Auto scroll xuống
         if (chatScrollRect != null)
         {
             Canvas.ForceUpdateCanvases();
             chatScrollRect.verticalNormalizedPosition = 0f;
+            Debug.Log($"[GameChatManager] ✅ ScrollRect updated");
+        }
+        else
+        {
+            Debug.LogWarning("[GameChatManager] ⚠️ chatScrollRect is NULL!");
         }
     }
 
-    /// <summary>
-    /// Clear all chat messages
-    /// </summary>
     public void ClearChat()
     {
-        _chatMessages.Clear();
+        _chatLog.Clear();
         if (chatMessagesContainer != null)
-        {
-            foreach (Transform child in chatMessagesContainer)
-            {
-                Destroy(child.gameObject);
-            }
-        }
+            foreach (Transform c in chatMessagesContainer) Destroy(c.gameObject);
     }
 }
 
-/// <summary>
-/// Network handler for chat messages - handles RPC calls
-/// </summary>
-public class ChatNetworkHandler : NetworkBehaviour
-{
-    private GameChatManager _chatManager;
-
-    public void SetChatManager(GameChatManager manager)
-    {
-        _chatManager = manager;
-    }
-
-    /// <summary>
-    /// Send chat message to all players
-    /// </summary>
-    public void SendChatMessage(string playerName, string message)
-    {
-        if (!HasInputAuthority)
-        {
-            Debug.LogWarning("[ChatNetworkHandler] Only input authority can send chat");
-            return;
-        }
-
-        // Call RPC on all players
-        RPC_BroadcastChatMessage(playerName, message);
-    }
-
-    /// <summary>
-    /// RPC to broadcast chat message to all players
-    /// </summary>
-    [Rpc(RpcSources.InputAuthority, RpcTargets.All)]
-    private void RPC_BroadcastChatMessage(string playerName, string message)
-    {
-        if (_chatManager != null)
-        {
-            _chatManager.AddChatMessageLocal(playerName, message);
-        }
-    }
-}
-
-/// <summary>
-/// Individual chat message display
-/// </summary>
-public class ChatMessageUI : MonoBehaviour
-{
-    [SerializeField] private TMP_Text playerNameText;
-    [SerializeField] private TMP_Text messageText;
-
-    public void Initialize(string playerName, string message)
-    {
-        if (playerNameText != null)
-            playerNameText.text = $"<color=cyan>{playerName}:</color>";
-
-        if (messageText != null)
-            messageText.text = message;
-    }
-}

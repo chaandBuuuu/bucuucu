@@ -1,22 +1,20 @@
 using UnityEngine;
 using System.Collections.Generic;
-using System.Linq;
 using Fusion;
 
 /// <summary>
-/// ✅ UPDATED RACE SYSTEM (v2):
-///   - Logic: First to cross finish line → 10s countdown → Calculate rankings by time + distance
-///   - Players freeze after crossing finish line
-///   - No more lap counting system
-///   - Pure finish-line based racing
+/// ✅ FIXED RaceManager:
+///   - OnChangedRender để client nhận event đúng (không chỉ host)
+///   - RPC_RestartRace để host broadcast restart
+///   - RPC_BackToLobby để quay về lobby
 /// </summary>
 public class RaceManager : NetworkBehaviour
 {
     public static RaceManager Instance { get; private set; }
 
     [Header("Race Config")]
-    [SerializeField] private float finishCountdownDuration = 10f;  // 10s countdown sau khi first player finish
-    
+    [SerializeField] private float finishCountdownDuration = 10f;
+
     [Header("Finish Line")]
     [SerializeField] private Transform finishLineTransform;
 
@@ -24,29 +22,38 @@ public class RaceManager : NetworkBehaviour
     [Networked] public bool  RaceStarted      { get; private set; }
     [Networked] public bool  RaceFinished     { get; private set; }
     [Networked] public float RaceTimer        { get; private set; }
-    [Networked] public int   CountdownCounter { get; private set; } = -1;  // Pre-race countdown (3,2,1,0)
-    [Networked] public float FinishCountdown  { get; private set; } = -1f; // Post-finish countdown (10s)
+    [Networked] public int   CountdownCounter { get; private set; } = -1;
+    [Networked] public float FinishCountdown  { get; private set; } = -1f;
+
+    // ✅ FIX: Networked booleans để trigger events trên client qua OnChangedRender
+    [Networked, OnChangedRender(nameof(OnRaceStartedChanged))]
+    private bool _raceStartedTrigger { get; set; }
+
+    [Networked, OnChangedRender(nameof(OnRaceFinishedChanged))]
+    private bool _raceFinishedTrigger { get; set; }
+
+    [Networked, OnChangedRender(nameof(OnPlayerFinishedChanged))]
+    private NetworkId _lastFinishedCarId { get; set; }
 
     // ── Local Tracking ───────────────────────────────────────────────────────
-    // Người chơi đã qua đích (NetworkId → thời gian qua đích)
-    private Dictionary<NetworkId, float> _finishTimes = new Dictionary<NetworkId, float>();
-    // Distance từ người chơi đến finish line khi qua đích
+    private Dictionary<NetworkId, float> _finishTimes     = new Dictionary<NetworkId, float>();
     private Dictionary<NetworkId, float> _finishDistances = new Dictionary<NetworkId, float>();
-    // Statusof người chơi (active, finished, frozen)
-    private Dictionary<NetworkId, bool> _carFinished = new Dictionary<NetworkId, bool>();
-    
-    private List<CarController> _cachedCars = new List<CarController>();
-    private CarController _firstFinisher = null;
-    private bool _isSpawned = false;
-    private float _countdownTimer = 0f;
-    private float _finishCountdownTimer = 0f;
-    private float _lastCarCacheTime = 0f;
-    private const float CAR_CACHE_UPDATE_INTERVAL = 0.5f;
+    private Dictionary<NetworkId, bool>  _carFinished     = new Dictionary<NetworkId, bool>();
 
-    public event System.Action                   OnRaceStart;
-    public event System.Action<CarController>    OnRaceEnd;
-    public event System.Action<CarController>    OnPlayerFinish;  // Khi player qua đích
-    public event System.Action<List<(CarController, int, float, float)>> OnFinalRankings;  // Car, Position, Time, Distance
+    private List<CarController> _cachedCars        = new List<CarController>();
+    private CarController       _firstFinisher     = null;
+    private CarController       _winner            = null;
+    private bool                _isSpawned         = false;
+    private float               _countdownTimer    = 0f;
+    private float               _finishCountdownTimer = 0f;
+    private float               _lastCarCacheTime  = 0f;
+    private const float         CAR_CACHE_UPDATE_INTERVAL = 0.5f;
+
+    // ✅ Events – fire trên tất cả clients nhờ OnChangedRender
+    public event System.Action                                           OnRaceStart;
+    public event System.Action<CarController>                            OnRaceEnd;
+    public event System.Action<CarController>                            OnPlayerFinish;
+    public event System.Action<List<(CarController, int, float, float)>> OnFinalRankings;
 
     private void Awake()
     {
@@ -58,64 +65,98 @@ public class RaceManager : NetworkBehaviour
     {
         _isSpawned = true;
 
-        if (HasStateAuthority && !RaceStarted)
+        if (HasStateAuthority)
         {
-            RaceStarted  = false;
-            RaceFinished = false;
-            RaceTimer    = 0f;
+            RaceStarted      = false;
+            RaceFinished     = false;
+            RaceTimer        = 0f;
             CountdownCounter = -1;
-            FinishCountdown = -1f;
-            Debug.Log("[RaceManager] ✅ Race initialized (finish-line based)!");
+            FinishCountdown  = -1f;
+            Debug.Log("[RaceManager] ✅ Initialized");
         }
     }
+
+    // ── OnChangedRender callbacks (chạy trên TẤT CẢ clients) ────────────────
+
+    private void OnRaceStartedChanged()
+    {
+        if (!_raceStartedTrigger) return;
+        Debug.Log("[RaceManager] 🏁 OnRaceStart → client");
+        OnRaceStart?.Invoke();
+    }
+
+    private void OnRaceFinishedChanged()
+    {
+        if (!_raceFinishedTrigger) return;
+        var rankings = CalculateFinalRankings();
+        OnFinalRankings?.Invoke(rankings);
+        if (_winner != null)
+            OnRaceEnd?.Invoke(_winner);
+        Debug.Log("[RaceManager] 🏆 OnRaceFinished → client");
+    }
+
+    private void OnPlayerFinishedChanged()
+    {
+        if (_lastFinishedCarId == default) return;
+        // Tìm car theo NetworkId
+        var allCars = FindObjectsByType<CarController>(FindObjectsSortMode.None);
+        foreach (var car in allCars)
+        {
+            if (car.Object != null && car.Object.Id == _lastFinishedCarId)
+            {
+                OnPlayerFinish?.Invoke(car);
+                Debug.Log($"[RaceManager] OnPlayerFinish → {car.name} on client");
+                return;
+            }
+        }
+    }
+
+    // ── FixedUpdateNetwork ───────────────────────────────────────────────────
 
     public override void FixedUpdateNetwork()
     {
         if (!HasStateAuthority) return;
 
-        // ── Pre-race countdown (3,2,1,0) ────────────────────────────────────
+        // Pre-race countdown
         if (CountdownCounter >= 0)
         {
             _countdownTimer += Runner.DeltaTime;
-            int desiredCount = Mathf.Max(0, 3 - Mathf.FloorToInt(_countdownTimer));
-            
-            if (desiredCount != CountdownCounter)
+            int desired = Mathf.Max(0, 3 - Mathf.FloorToInt(_countdownTimer));
+
+            if (desired != CountdownCounter)
             {
-                CountdownCounter = desiredCount;
+                CountdownCounter = desired;
                 Debug.Log($"[RaceManager] Countdown: {CountdownCounter}");
             }
 
             if (_countdownTimer >= 3f)
             {
-                _countdownTimer = 0f;
-                CountdownCounter = -1;
-                RaceStarted = true;
+                _countdownTimer      = 0f;
+                CountdownCounter     = -1;
+                RaceStarted          = true;
+                _raceStartedTrigger  = true;   // ✅ Trigger OnChangedRender trên clients
                 Debug.Log("[RaceManager] 🏁 RACE STARTED!");
-                OnRaceStart?.Invoke();
             }
         }
 
-        // ── Main race timer ──────────────────────────────────────────────────
+        // Race timer
         if (RaceStarted && !RaceFinished)
             RaceTimer += Runner.DeltaTime;
 
-        // ── Post-finish countdown (10s sau khi first player finish) ──────────
+        // Post-finish countdown
         if (FinishCountdown >= 0f)
         {
             _finishCountdownTimer += Runner.DeltaTime;
-            float desiredCountdown = Mathf.Max(-0.1f, finishCountdownDuration - _finishCountdownTimer);
-            FinishCountdown = desiredCountdown;
+            FinishCountdown = Mathf.Max(-0.1f, finishCountdownDuration - _finishCountdownTimer);
 
             if (_finishCountdownTimer >= finishCountdownDuration)
             {
                 _finishCountdownTimer = 0f;
-                FinishCountdown = -1f;
+                FinishCountdown       = -1f;
                 FinishRace();
-                Debug.Log("[RaceManager] ⏱️ Finish countdown complete - Race ended!");
             }
         }
 
-        // ── Update distances ─────────────────────────────────────────────────
         UpdatePlayerDistances();
     }
 
@@ -123,28 +164,15 @@ public class RaceManager : NetworkBehaviour
     {
         if (finishLineTransform == null) return;
 
-        // ✅ OPTIMIZE: Throttle car cache update to avoid FindObjectsByType every frame
-        float currentTime = Time.time;
-        if (currentTime - _lastCarCacheTime > CAR_CACHE_UPDATE_INTERVAL)
+        float now = Time.time;
+        if (now - _lastCarCacheTime > CAR_CACHE_UPDATE_INTERVAL)
         {
-            _lastCarCacheTime = currentTime;
+            _lastCarCacheTime = now;
             _cachedCars.Clear();
             var allCars = FindObjectsByType<CarController>(FindObjectsSortMode.None);
             foreach (var car in allCars)
-            {
                 if (car.Object != null && !car.IsFinished)
-                    _cachedCars.Add(car);  // ✅ Only cache active cars
-            }
-        }
-
-        // ✅ OPTIMIZE: Update distance only for unfinished cars
-        Vector3 finishPos = finishLineTransform.position;
-        foreach (var car in _cachedCars)
-        {
-            if (car.Object == null) continue;
-
-            float distance = Vector3.Distance(car.transform.position, finishPos);
-            // Only store if car hasn't finished yet
+                    _cachedCars.Add(car);
         }
     }
 
@@ -153,53 +181,71 @@ public class RaceManager : NetworkBehaviour
         finishLineTransform = finishLine;
     }
 
+    // ── RPCs ─────────────────────────────────────────────────────────────────
+
     [Rpc(RpcSources.All, RpcTargets.StateAuthority)]
     public void RPC_StartRace()
     {
         if (!HasStateAuthority) return;
         CountdownCounter = 3;
-        _countdownTimer = 0f;
-        Debug.Log("[RaceManager] 🎬 Starting pre-race countdown!");
+        _countdownTimer  = 0f;
+        Debug.Log("[RaceManager] 🎬 Starting countdown!");
     }
 
     /// <summary>
-    /// ✅ NEW: Người chơi qua đích
+    /// ✅ Host restart race → broadcast cho tất cả clients
     /// </summary>
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    public void RPC_RestartRace()
+    {
+        Debug.Log("[RaceManager] 🔄 Restarting race...");
+        // Load lại scene GamePlay
+        if (Runner != null && Runner.IsServer)
+            Runner.LoadScene(SceneRef.FromIndex(2));
+    }
+
+    /// <summary>
+    /// ✅ Host back to lobby → broadcast cho tất cả clients
+    /// </summary>
+    [Rpc(RpcSources.StateAuthority, RpcTargets.All)]
+    public void RPC_BackToLobby()
+    {
+        Debug.Log("[RaceManager] 🏠 Back to lobby...");
+        if (Runner != null && Runner.IsServer)
+            Runner.LoadScene(SceneRef.FromIndex(1));
+    }
+
+    // ── Race Logic ───────────────────────────────────────────────────────────
+
     public void RegisterFinishCrossing(CarController car)
     {
         if (!HasStateAuthority) return;
         if (!RaceStarted || RaceFinished) return;
 
         NetworkId carId = car.Object.Id;
+        if (_carFinished.TryGetValue(carId, out bool done) && done) return;
 
-        // Tránh đếm 2 lần
-        if (_carFinished.TryGetValue(carId, out bool finished) && finished)
-            return;
+        _carFinished[carId]  = true;
+        _finishTimes[carId]  = RaceTimer;
 
-        _carFinished[carId] = true;
-        _finishTimes[carId] = RaceTimer;
-        
-        // Lưu distance từ finish line
         if (finishLineTransform != null)
-        {
-            float distance = Vector3.Distance(car.transform.position, finishLineTransform.position);
-            _finishDistances[carId] = distance;
-        }
+            _finishDistances[carId] = Vector3.Distance(car.transform.position, finishLineTransform.position);
 
+        car.IsFinished       = true;
+        _lastFinishedCarId   = carId;  // ✅ Trigger OnChangedRender → OnPlayerFinish trên clients
+
+        // Host fire event trực tiếp
         OnPlayerFinish?.Invoke(car);
+
         Debug.Log($"[RaceManager] ✅ {car.name} finished at {RaceTimer:F2}s");
 
-        // Nếu đây là người finish đầu tiên → bắt đầu 10s countdown
         if (_firstFinisher == null)
         {
-            _firstFinisher = car;
-            FinishCountdown = finishCountdownDuration;
+            _firstFinisher        = car;
+            FinishCountdown       = finishCountdownDuration;
             _finishCountdownTimer = 0f;
-            Debug.Log($"[RaceManager] 🎉 First finisher: {car.name} - Starting 10s countdown!");
+            Debug.Log($"[RaceManager] 🎉 First finisher: {car.name}");
         }
-
-        // Freeze player (không cho chạy nữa)
-        car.IsFinished = true;
     }
 
     private void FinishRace()
@@ -207,88 +253,70 @@ public class RaceManager : NetworkBehaviour
         if (RaceFinished) return;
         RaceFinished = true;
 
-        // Tính toán kết quả: ranking dựa trên thời gian qua đích + khoảng cách
+        // Cache tất cả cars cho rankings
+        _cachedCars.Clear();
+        var all = FindObjectsByType<CarController>(FindObjectsSortMode.None);
+        foreach (var c in all)
+            if (c.Object != null) _cachedCars.Add(c);
+
         var rankings = CalculateFinalRankings();
-        
+        if (rankings.Count > 0) _winner = rankings[0].car;
+
+        // Host fire events trực tiếp
         OnFinalRankings?.Invoke(rankings);
-        
-        if (rankings.Count > 0)
-        {
-            var winner = rankings[0];
-            Debug.Log($"[RaceManager] 🏆 Race finished! Winner: {winner.Item1.name} (Time: {winner.Item3:F2}s, Distance: {winner.Item4:F2}m)");
-            OnRaceEnd?.Invoke(winner.Item1);
-        }
+        if (_winner != null) OnRaceEnd?.Invoke(_winner);
+
+        // ✅ Trigger OnChangedRender → clients cũng nhận
+        _raceFinishedTrigger = true;
+
+        Debug.Log($"[RaceManager] 🏆 Race finished! Winner: {_winner?.name}");
     }
 
-    /// <summary>
-    /// ✅ Tính toán ranking cuối cùng: Thứ tự = thời gian qua đích + khoảng cách
-    /// </summary>
     private List<(CarController car, int position, float finishTime, float finishDistance)> CalculateFinalRankings()
     {
-        var rankings = new List<(CarController, int, float, float)>();
-
-        // Tất cả người chơi (kể cả chưa finish)
-        List<(CarController car, float finishTime, float finishDistance)> playerStats = new List<(CarController, float, float)>();
+        var stats = new List<(CarController car, float time, float dist)>();
 
         foreach (var car in _cachedCars)
         {
             if (car?.Object == null) continue;
-            NetworkId carId = car.Object.Id;
+            NetworkId id = car.Object.Id;
 
-            if (_carFinished.TryGetValue(carId, out bool finished) && finished)
+            if (_carFinished.TryGetValue(id, out bool finished) && finished)
             {
-                float time = _finishTimes.TryGetValue(carId, out float t) ? t : RaceTimer;
-                float distance = _finishDistances.TryGetValue(carId, out float d) ? d : 0f;
-                playerStats.Add((car, time, distance));
+                float t = _finishTimes.TryGetValue(id, out var ft) ? ft : RaceTimer;
+                float d = _finishDistances.TryGetValue(id, out var fd) ? fd : 0f;
+                stats.Add((car, t, d));
             }
             else
             {
-                // Người chơi chưa finish → đánh giá dựa trên distance hiện tại
-                float distance = finishLineTransform != null 
+                float d = finishLineTransform != null
                     ? Vector3.Distance(car.transform.position, finishLineTransform.position)
                     : float.MaxValue;
-                playerStats.Add((car, RaceTimer, distance));  // Fake time = race total time
+                stats.Add((car, RaceTimer, d));
             }
         }
 
-        // Sort: Primary = finish time (sớm hơn tốt hơn), Secondary = distance (gần hơn tốt hơn)
-        playerStats.Sort((a, b) =>
+        stats.Sort((a, b) =>
         {
-            // Nếu cùng finish → compare distance
-            if (Mathf.Abs(a.finishTime - b.finishTime) < 0.01f)
-            {
-                return a.finishDistance.CompareTo(b.finishDistance);
-            }
-            // Ngược lại → compare time
-            return a.finishTime.CompareTo(b.finishTime);
+            if (Mathf.Abs(a.time - b.time) < 0.01f) return a.dist.CompareTo(b.dist);
+            return a.time.CompareTo(b.time);
         });
 
-        // Build rankings
-        for (int i = 0; i < playerStats.Count; i++)
-        {
-            rankings.Add((playerStats[i].car, i + 1, playerStats[i].finishTime, playerStats[i].finishDistance));
-        }
-
-        return rankings;
+        var result = new List<(CarController, int, float, float)>();
+        for (int i = 0; i < stats.Count; i++)
+            result.Add((stats[i].car, i + 1, stats[i].time, stats[i].dist));
+        return result;
     }
 
-    // ──────────────────────────────────────────────────────────────────────────
-    // PUBLIC API
-    // ──────────────────────────────────────────────────────────────────────────
+    // ── Public API ───────────────────────────────────────────────────────────
 
-    public bool IsPlayerFinished(CarController car)
-    {
-        if (car?.Object == null) return false;
-        return _carFinished.TryGetValue(car.Object.Id, out bool finished) && finished;
-    }
+    public bool  IsPlayerFinished(CarController car) =>
+        car?.Object != null && _carFinished.TryGetValue(car.Object.Id, out bool f) && f;
 
     public float GetRaceTime() => _isSpawned ? RaceTimer : 0f;
 
-    public float GetPlayerFinishTime(CarController car)
-    {
-        if (car?.Object == null) return -1f;
-        return _finishTimes.TryGetValue(car.Object.Id, out float time) ? time : -1f;
-    }
+    public float GetPlayerFinishTime(CarController car) =>
+        car?.Object != null && _finishTimes.TryGetValue(car.Object.Id, out float t) ? t : -1f;
 
     public CarController GetFirstFinisher() => _firstFinisher;
     public bool IsSpawned => _isSpawned;

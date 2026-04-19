@@ -2,310 +2,276 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using Fusion;
+using System.Collections;
 using System.Collections.Generic;
 
 /// <summary>
-/// ✅ NEW: Game End UI with Chat + Vote Restart
-/// - Shows when race ends
-/// - Displays winner + game stats
-/// - Chat system for players
-/// - Vote buttons to restart race
-/// - Locks game input
+/// ✅ FIXED GameEndChatManager:
+///   - Restart/BackToLobby dùng RaceManager.RPC_RestartRace / RPC_BackToLobby
+///   - Vote count dùng Runner.ActivePlayers thay vì MaxPlayers cứng
+///   - Vote được sync qua ChatNetworkHandler RPC
+///   - Chỉ host mới thực sự load scene
 /// </summary>
 public class GameEndChatManager : MonoBehaviour
 {
     [Header("UI References")]
-    [SerializeField] private Canvas gameEndCanvas;
-    [SerializeField] private CanvasGroup canvasGroup;
-    [SerializeField] private TMP_Text winnerText;
-    [SerializeField] private TMP_Text timerText;
-    [SerializeField] private TMP_Text statsText;
+    [SerializeField] private Canvas       gameEndCanvas;
+    [SerializeField] private CanvasGroup  canvasGroup;
+    [SerializeField] private TMP_Text     winnerText;
+    [SerializeField] private TMP_Text     statsText;
 
-    [Header("Chat System")]
-    [SerializeField] private Transform chatMessagesContainer;
-    [SerializeField] private GameObject chatMessagePrefab;
+    [Header("Chat")]
+    [SerializeField] private Transform      chatMessagesContainer;
+    [SerializeField] private GameObject     chatMessagePrefab;
     [SerializeField] private TMP_InputField chatInputField;
-    [SerializeField] private Button chatSendButton;
-    [SerializeField] private ScrollRect chatScrollRect;
+    [SerializeField] private Button         chatSendButton;
+    [SerializeField] private ScrollRect     chatScrollRect;
 
-    [Header("Vote System")]
-    [SerializeField] private Button restartButton;
-    [SerializeField] private Button backToLobbyButton;
-    [SerializeField] private Button mainMenuButton;
+    [Header("Vote Buttons")]
+    [SerializeField] private Button   restartButton;
+    [SerializeField] private Button   lobbyButton;
+    [SerializeField] private Button   mainMenuButton;
     [SerializeField] private TMP_Text voteCountText;
 
     [Header("Settings")]
     [SerializeField] private float fadeInDuration = 0.5f;
-    [SerializeField] private float fadeInDelay = 0.5f;
-    [SerializeField] private int maxChatMessages = 20;
+    [SerializeField] private float fadeInDelay    = 1f;
+    [SerializeField] private int   maxMessages    = 20;
 
-    private List<ChatMessage> _chatMessages = new List<ChatMessage>();
-    private Dictionary<PlayerRef, bool> _restartVotes = new Dictionary<PlayerRef, bool>();
+    // ── Runtime ───────────────────────────────────────────────────────────────
+    public static GameEndChatManager Instance { get; private set; }
+
     private CarController _winner;
-    private float _raceDuration;
     private bool _isGameEnded = false;
     private List<(CarController, int, float, float)> _finalRankings;
 
-    private struct ChatMessage
+    // Vote: key = playerId, value = "restart" | "lobby"
+    private Dictionary<int, string> _votes = new Dictionary<int, string>();
+    private int _totalPlayers = 1;
+
+    private void Awake()
     {
-        public string playerName;
-        public string message;
-        public float timestamp;
+        if (Instance != null && Instance != this) { Destroy(gameObject); return; }
+        Instance = this;
     }
 
     private void Start()
     {
-        // Initialize canvas (disabled initially)
-        if (gameEndCanvas != null)
-            gameEndCanvas.enabled = false;
+        if (gameEndCanvas != null) gameEndCanvas.enabled = false;
+        if (canvasGroup   != null) canvasGroup.alpha     = 0f;
 
-        if (canvasGroup != null)
-            canvasGroup.alpha = 0f;
-
-        // Setup event listeners
         if (RaceManager.Instance != null)
         {
-            RaceManager.Instance.OnRaceEnd += OnRaceEnd;
+            RaceManager.Instance.OnRaceEnd       += OnRaceEnd;
             RaceManager.Instance.OnFinalRankings += OnFinalRankings;
         }
 
-        // Setup chat
-        if (chatSendButton != null)
-            chatSendButton.onClick.AddListener(OnSendChatMessage);
-
-        if (chatInputField != null)
-            chatInputField.onSubmit.AddListener(_ => OnSendChatMessage());
-
-        // Setup vote buttons
-        if (restartButton != null)
-            restartButton.onClick.AddListener(OnVoteRestart);
-
-        if (backToLobbyButton != null)
-            backToLobbyButton.onClick.AddListener(OnBackToLobby);
-
-        if (mainMenuButton != null)
-            mainMenuButton.onClick.AddListener(OnMainMenu);
-
-        Debug.Log("[GameEndChatManager] Initialized");
+        if (chatSendButton  != null) chatSendButton.onClick.AddListener(OnSendChat);
+        if (chatInputField  != null) chatInputField.onSubmit.AddListener(_ => OnSendChat());
+        if (restartButton   != null) restartButton.onClick.AddListener(() => OnVote("restart"));
+        if (lobbyButton     != null) lobbyButton.onClick.AddListener(() => OnVote("lobby"));
+        if (mainMenuButton  != null) mainMenuButton.onClick.AddListener(OnMainMenu);
     }
 
     private void OnDestroy()
     {
         if (RaceManager.Instance != null)
         {
-            RaceManager.Instance.OnRaceEnd -= OnRaceEnd;
+            RaceManager.Instance.OnRaceEnd       -= OnRaceEnd;
             RaceManager.Instance.OnFinalRankings -= OnFinalRankings;
         }
     }
 
-    /// ✅ Called when race ends
+    // ─────────────────────────────────────────────────────────────────────────
+    #region Race End
+
     private void OnRaceEnd(CarController winner)
     {
-        _winner = winner;
+        _winner    = winner;
         _isGameEnded = true;
 
-        Debug.Log($"[GameEndChatManager] Race ended! Winner: {winner.name}");
-
-        // ✅ NEW: Lock game input
         GameInputLocker.Instance?.LockInput(true);
 
-        // Show UI with delay and fade
-        StartCoroutine(ShowGameEndUI());
+        // Lấy số player thực tế
+        var runner = FusionNetworkManager.Instance?.Runner;
+        if (runner != null)
+        {
+            _totalPlayers = 0;
+            foreach (var _ in runner.ActivePlayers) _totalPlayers++;
+        }
+
+        StartCoroutine(ShowUI());
     }
 
-    /// ✅ Called with final rankings
     private void OnFinalRankings(List<(CarController, int, float, float)> rankings)
     {
         _finalRankings = rankings;
-        UpdateStatsDisplay();
+        UpdateStats();
     }
 
-    /// ✅ Fade in game end UI
-    private System.Collections.IEnumerator ShowGameEndUI()
+    private IEnumerator ShowUI()
     {
         yield return new WaitForSeconds(fadeInDelay);
 
-        if (gameEndCanvas != null)
-            gameEndCanvas.enabled = true;
+        if (gameEndCanvas != null) gameEndCanvas.enabled = true;
 
-        // Fade in
         float elapsed = 0f;
         while (elapsed < fadeInDuration)
         {
             elapsed += Time.deltaTime;
-            float alpha = Mathf.Clamp01(elapsed / fadeInDuration);
-
-            if (canvasGroup != null)
-                canvasGroup.alpha = alpha;
-
+            if (canvasGroup != null) canvasGroup.alpha = Mathf.Clamp01(elapsed / fadeInDuration);
             yield return null;
         }
-
-        if (canvasGroup != null)
-            canvasGroup.alpha = 1f;
-
-        Debug.Log("[GameEndChatManager] Game end UI faded in");
+        if (canvasGroup != null) canvasGroup.alpha = 1f;
     }
 
-    /// ✅ Update stats display
-    private void UpdateStatsDisplay()
+    private void UpdateStats()
     {
         if (_winner != null && winnerText != null)
-        {
             winnerText.text = $"🏆 {_winner.name} Chiến Thắng!";
-        }
 
         if (_finalRankings != null && statsText != null)
         {
-            string stats = "📊 Bảng Xếp Hạng:\n";
-            for (int i = 0; i < _finalRankings.Count; i++)
-            {
-                var (car, pos, time, dist) = _finalRankings[i];
-                stats += $"{pos}. {car.name} - {time:F1}s\n";
-            }
-            statsText.text = stats;
+            string s = "📊 Bảng Xếp Hạng:\n";
+            foreach (var (car, pos, time, dist) in _finalRankings)
+                s += $"{pos}. {car.name} – {time:F1}s\n";
+            statsText.text = s;
         }
     }
 
-    /// ✅ Send chat message
-    private void OnSendChatMessage()
-    {
-        if (chatInputField == null || string.IsNullOrEmpty(chatInputField.text))
-            return;
+    #endregion
 
-        string message = chatInputField.text;
+    // ─────────────────────────────────────────────────────────────────────────
+    #region Chat
+
+    private void OnSendChat()
+    {
+        if (chatInputField == null || string.IsNullOrEmpty(chatInputField.text)) return;
+
+        string msg  = chatInputField.text.Trim();
+        string name = FusionNetworkManager.Instance?.GetStoredPlayerName() ?? "Player";
         chatInputField.text = "";
 
-        // Send to all players
-        if (FusionNetworkManager.Instance != null)
-        {
-            var playerName = FusionNetworkManager.Instance.GetStoredPlayerName();
-            AddChatMessage(playerName, message);
-
-            // ✅ TODO: Send via RPC to sync across network
-            // RPC_BroadcastChatMessage(playerName, message);
-        }
+        // Dùng ChatNetworkHandler để broadcast
+        if (ChatNetworkHandler.Instance != null)
+            ChatNetworkHandler.Instance.RPC_Broadcast(name, $"[END] {msg}");
+        else
+            AddChatLocal(name, msg);
     }
 
-    /// ✅ Add chat message to display
-    private void AddChatMessage(string playerName, string message)
+    public void AddChatLocal(string playerName, string message)
     {
-        if (chatMessagesContainer == null || chatMessagePrefab == null)
-            return;
+        if (chatMessagesContainer == null || chatMessagePrefab == null) return;
 
-        GameObject msgGO = Instantiate(chatMessagePrefab, chatMessagesContainer);
-        var msgUI = msgGO.GetComponent<GameEndChatMessageUI>();
+        var go = Instantiate(chatMessagePrefab, chatMessagesContainer);
+        var ui = go.GetComponent<ChatMessageUI>();
+        if (ui != null) ui.Initialize(playerName, message);
 
-        if (msgUI != null)
-        {
-            msgUI.Initialize(playerName, message);
-        }
-
-        // Limit messages
-        while (chatMessagesContainer.childCount > maxChatMessages)
-        {
+        while (chatMessagesContainer.childCount > maxMessages)
             Destroy(chatMessagesContainer.GetChild(0).gameObject);
-        }
 
-        // Auto-scroll to bottom
         if (chatScrollRect != null)
         {
+            Canvas.ForceUpdateCanvases();
             chatScrollRect.verticalNormalizedPosition = 0f;
         }
     }
 
-    /// ✅ Vote to restart
-    private void OnVoteRestart()
+    #endregion
+
+    // ─────────────────────────────────────────────────────────────────────────
+    #region Vote
+
+    private void OnVote(string voteType)
     {
         if (!_isGameEnded) return;
 
-        PlayerRef localPlayer = FusionNetworkManager.Instance?.Runner?.LocalPlayer ?? default;
-        _restartVotes[localPlayer] = true;
+        var runner = FusionNetworkManager.Instance?.Runner;
+        if (runner == null) return;
 
-        Debug.Log($"[GameEndChatManager] Player voted to restart");
+        int playerId = runner.LocalPlayer.PlayerId;
+        _votes[playerId] = voteType;
+
+        string name = FusionNetworkManager.Instance?.GetStoredPlayerName() ?? "Player";
+
+        // Broadcast vote qua chat
+        if (ChatNetworkHandler.Instance != null)
+            ChatNetworkHandler.Instance.RPC_Broadcast("System", $"🗳️ {name} voted: {voteType}");
+
+        // ✅ Sync vote count qua RPC
+        if (GameEndVoteHandler.Instance != null)
+            GameEndVoteHandler.Instance.RPC_RegisterVote(playerId, voteType);
+
         UpdateVoteDisplay();
-
-        // ✅ TODO: RPC to sync votes
-        // RPC_RegisterRestartVote(localPlayer);
-
-        // Check if all voted
-        int totalPlayers = FusionNetworkManager.Instance?.Runner?.SessionInfo.MaxPlayers ?? 1;
-        if (_restartVotes.Count >= totalPlayers)
-        {
-            RestartRace();
-        }
     }
 
-    /// ✅ Update vote display
+    public void RegisterRemoteVote(int playerId, string voteType)
+    {
+        _votes[playerId] = voteType;
+        UpdateVoteDisplay();
+        CheckVoteResult();
+    }
+
     private void UpdateVoteDisplay()
     {
-        if (voteCountText != null)
+        if (voteCountText == null) return;
+
+        int restartCount = 0, lobbyCount = 0;
+        foreach (var v in _votes.Values)
         {
-            int totalPlayers = 4; // TODO: Get from Runner
-            voteCountText.text = $"💬 Vote Restart: {_restartVotes.Count}/{totalPlayers}";
-        }
-    }
-
-    /// ✅ Restart race
-    private void RestartRace()
-    {
-        Debug.Log("[GameEndChatManager] Restarting race...");
-
-        // ✅ NEW: Unlock input
-        GameInputLocker.Instance?.LockInput(false);
-
-        // Reset
-        _isGameEnded = false;
-        _restartVotes.Clear();
-        _chatMessages.Clear();
-
-        // Clear chat display
-        if (chatMessagesContainer != null)
-        {
-            foreach (Transform child in chatMessagesContainer)
-            {
-                Destroy(child.gameObject);
-            }
+            if (v == "restart") restartCount++;
+            else if (v == "lobby") lobbyCount++;
         }
 
-        // Hide UI
-        if (gameEndCanvas != null)
-            gameEndCanvas.enabled = false;
-
-        // TODO: Reload scene or reset race state
+        voteCountText.text = $"🔄 Restart: {restartCount}/{_totalPlayers}  🏠 Lobby: {lobbyCount}/{_totalPlayers}";
     }
 
-    /// ✅ Back to Lobby
-    private void OnBackToLobby()
+    private void CheckVoteResult()
     {
-        Debug.Log("[GameEndChatManager] Back to Lobby");
-        GameInputLocker.Instance?.LockInput(false);
-        // TODO: Load Lobby scene
+        // Majority vote
+        int restartCount = 0, lobbyCount = 0;
+        foreach (var v in _votes.Values)
+        {
+            if (v == "restart") restartCount++;
+            else if (v == "lobby") lobbyCount++;
+        }
+
+        int majority = Mathf.CeilToInt(_totalPlayers / 2f);
+
+        if (restartCount >= majority)
+            ExecuteRestart();
+        else if (lobbyCount >= majority)
+            ExecuteBackToLobby();
     }
 
-    /// ✅ Back to Main Menu
+    private void ExecuteRestart()
+    {
+        Debug.Log("[GameEndChatManager] ✅ Majority voted restart");
+        GameInputLocker.Instance?.LockInput(false);
+
+        // ✅ Chỉ host load scene
+        var runner = FusionNetworkManager.Instance?.Runner;
+        if (runner != null && runner.IsServer)
+            RaceManager.Instance?.RPC_RestartRace();
+    }
+
+    private void ExecuteBackToLobby()
+    {
+        Debug.Log("[GameEndChatManager] ✅ Majority voted lobby");
+        GameInputLocker.Instance?.LockInput(false);
+
+        var runner = FusionNetworkManager.Instance?.Runner;
+        if (runner != null && runner.IsServer)
+            RaceManager.Instance?.RPC_BackToLobby();
+    }
+
     private void OnMainMenu()
     {
-        Debug.Log("[GameEndChatManager] Back to Main Menu");
+        Debug.Log("[GameEndChatManager] Main Menu");
         GameInputLocker.Instance?.LockInput(false);
-        // TODO: Load Main Menu scene
+        UnityEngine.SceneManagement.SceneManager.LoadScene("Menu");
     }
+
+    #endregion
 }
 
-/// <summary>
-/// Individual chat message display component (for GameEndChatManager)
-/// </summary>
-public class GameEndChatMessageUI : MonoBehaviour
-{
-    [SerializeField] private TMP_Text playerNameText;
-    [SerializeField] private TMP_Text messageText;
-
-    public void Initialize(string playerName, string message)
-    {
-        if (playerNameText != null)
-            playerNameText.text = $"<color=cyan>{playerName}:</color>";
-
-        if (messageText != null)
-            messageText.text = message;
-    }
-}
