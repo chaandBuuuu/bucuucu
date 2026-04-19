@@ -69,7 +69,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 544e8fcd383888d4291d1dd0a523a492, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CarController
-  acceleration: 8
+  acceleration: 5
   maxSpeed: 1000
   friction: 0.95
   driftFriction: 0.92
