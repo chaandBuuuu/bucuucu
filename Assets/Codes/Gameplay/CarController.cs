@@ -228,12 +228,9 @@ public class CarController : NetworkBehaviour
             // ✅ NEW: Sync velocity to network for remote car interpolation
             NetworkVelocity = _localVelocity;
         }
-        else if (_rb.bodyType == RigidbodyType2D.Kinematic)
-        {
-            // ✅ FIX: Remote cars (Kinematic) apply synced velocity directly
-            // NO interpolation/lerp - just direct assignment for smooth movement
-            _rb.linearVelocity = NetworkVelocity;
-        }
+        // ✅ FIX: Remote cars (Kinematic) DO NOT apply velocity
+        // NetworkTransform handles position sync automatically
+        // Kinematic + Simulated: true only for collision detection
     }
 
     private void HandleMovement(NetworkInputData input)
