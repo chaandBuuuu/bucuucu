@@ -9,9 +9,12 @@ using UnityEngine.SceneManagement;
 ///   - Client không di chuyển được vì InputHandler chỉ register 1 lần khi Start()
 ///     nhưng Runner vẫn còn sau scene transition → cần re-register
 ///   - Dùng SceneManager.sceneLoaded event để tự động re-register
+///   - EnsureExists() để tạo InputHandler nếu chưa tồn tại (giống AudioManager)
 /// </summary>
 public class InputHandler : FusionCallbacksBase
 {
+    private static InputHandler _instance;
+    
     private Vector2 _moveInput;
     private bool    _isDrifting;
     private bool    _usePowerup;
@@ -22,13 +25,59 @@ public class InputHandler : FusionCallbacksBase
 
     private bool _isRegistered = false;
 
+    /// <summary>
+    /// ✅ FIXED: Ensure InputHandler exists (create if needed)
+    /// </summary>
+    public static void EnsureExists()
+    {
+        if (_instance != null)
+        {
+            Debug.Log($"[InputHandler] ✅ Instance already exists: {_instance.gameObject.name}");
+            return;
+        }
+
+        // Search for existing instance in scene
+        var existingHandler = FindAnyObjectByType<InputHandler>();
+        if (existingHandler != null)
+        {
+            _instance = existingHandler;
+            Debug.Log($"[InputHandler] ✅ Found existing instance: {existingHandler.gameObject.name}");
+            return;
+        }
+
+        // Create new if doesn't exist
+        var go = new GameObject("InputHandler");
+        var handler = go.AddComponent<InputHandler>();
+        // Instance set in Awake
+        Debug.Log("[InputHandler] ✅ Created new InputHandler instance");
+    }
+
     private void Awake()
     {
+        // ✅ FIXED: Prevent duplicate InputHandlers
+        var existingInstance = FindAnyObjectByType<InputHandler>();
+        if (existingInstance != null && existingInstance != this)
+        {
+            Debug.LogWarning($"[InputHandler] ⚠️ Destroying duplicate InputHandler. Existing: {existingInstance.gameObject.name}, This: {gameObject.name}");
+            Destroy(gameObject);
+            return;
+        }
+
+        _instance = this;
         DontDestroyOnLoad(gameObject);
+        Debug.Log($"[InputHandler] ✅ Singleton set: {gameObject.name}");
     }
 
     private void Start()
     {
+        // ✅ FIXED: Check if we're the active singleton
+        if (_instance != this)
+        {
+            Debug.LogWarning($"[InputHandler] ⚠️ This instance is not the singleton! Destroying.");
+            Destroy(gameObject);
+            return;
+        }
+
         // FIX: Lắng nghe scene load để re-register
         SceneManager.sceneLoaded += OnSceneLoaded;
         StartCoroutine(RegisterWhenReady());
@@ -36,8 +85,11 @@ public class InputHandler : FusionCallbacksBase
 
     private void OnDestroy()
     {
-        SceneManager.sceneLoaded -= OnSceneLoaded;
-        TryUnregister();
+        if (_instance == this)
+        {
+            SceneManager.sceneLoaded -= OnSceneLoaded;
+            Debug.Log("[InputHandler] ✅ Unsubscribed from scene load events");
+        }
     }
 
     /// <summary>
@@ -47,6 +99,13 @@ public class InputHandler : FusionCallbacksBase
     /// </summary>
     private void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
+        // ✅ FIXED: Only process if we're the active singleton
+        if (_instance != this)
+        {
+            Debug.LogWarning($"[InputHandler] ⚠️ OnSceneLoaded called on non-singleton instance. Ignoring.");
+            return;
+        }
+
         Debug.Log($"[InputHandler] Scene loaded: {scene.name}, re-registering input...");
 
         // Unregister cái cũ trước
@@ -68,19 +127,38 @@ public class InputHandler : FusionCallbacksBase
 
     private System.Collections.IEnumerator RegisterWhenReady()
     {
-        // Chờ Runner tồn tại và đang chạy
-        while (FusionNetworkManager.Instance?.Runner == null ||
-               !FusionNetworkManager.Instance.Runner.IsRunning)
+        int maxAttempts = 300; // 5 second timeout (60 frames * 5)
+        int attempts = 0;
+        
+        // ✅ FIXED: Chờ Runner tồn tại và đang chạy với timeout
+        while (attempts < maxAttempts &&
+               (FusionNetworkManager.Instance?.Runner == null ||
+                !FusionNetworkManager.Instance.Runner.IsRunning))
         {
+            attempts++;
             yield return null;
         }
 
-        // FIX: Kiểm tra chưa register với runner này
+        if (attempts >= maxAttempts)
+        {
+            Debug.LogError("[InputHandler] ❌ TIMEOUT: Runner never became available!");
+            yield break;
+        }
+
+        // ✅ FIXED: Kiểm tra chưa register với runner này
         if (!_isRegistered)
         {
-            FusionNetworkManager.Instance.Runner.AddCallbacks(this);
-            _isRegistered = true;
-            Debug.Log($"[InputHandler] ✅ Registered with Runner (IsServer={FusionNetworkManager.Instance.Runner.IsServer})");
+            var runner = FusionNetworkManager.Instance.Runner;
+            if (runner != null && runner.IsRunning)
+            {
+                runner.AddCallbacks(this);
+                _isRegistered = true;
+                Debug.Log($"[InputHandler] ✅ Registered with Runner (IsServer={runner.IsServer}, LocalPlayer={runner.LocalPlayer})");
+            }
+            else
+            {
+                Debug.LogError("[InputHandler] ❌ Cannot register: Runner is null or not running!");
+            }
         }
     }
 

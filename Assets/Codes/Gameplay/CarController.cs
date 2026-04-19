@@ -217,6 +217,14 @@ public class CarController : NetworkBehaviour
             HandleMovement(input);
             HandlePowerup(input);
         }
+        else
+        {
+            // ✅ FIXED: Log warning if no input received for authority
+            if (HasInputAuthority)
+            {
+                Debug.LogWarning($"[CarController] ⚠️ GetInput() returned false for authority player {Object?.InputAuthority}");
+            }
+        }
 
         // ✅ Only apply velocity on simulating machine (owner + server)
         if (HasInputAuthority || HasStateAuthority)

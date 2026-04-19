@@ -52,6 +52,9 @@ public partial class FusionNetworkManager : FusionCallbacksBase
         
         // ✅ NEW: Đảm bảo AudioManager được tạo
         AudioManager.EnsureExists();
+        
+        // ✅ NEW: Đảm bảo InputHandler được tạo
+        InputHandler.EnsureExists();
     }
 
     // ================== PLAYER NAME ==================
