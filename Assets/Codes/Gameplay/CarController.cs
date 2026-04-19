@@ -85,7 +85,8 @@ public class CarController : NetworkBehaviour
         else
         {
             _rb.bodyType       = RigidbodyType2D.Kinematic;   // Remote car dùng NetworkTransform
-            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name}");
+            _rb.simulated      = true;  // ✅ FIX: Enable physics simulation để collide với obstacles
+            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name} | Physics: Kinematic, Simulated: True");
         }
     }
 
