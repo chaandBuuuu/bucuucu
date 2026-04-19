@@ -39,7 +39,6 @@ public class CarController : NetworkBehaviour
     [Networked] public  int     LapsCompleted { get; set; }
     [Networked] public  bool    IsFinished    { get; set; }
     [Networked] private float   SpeedMultiplier { get; set; } = 1f;
-    [Networked] public  Vector2 NetworkVelocity { get; set; } = Vector2.zero;  // ✅ NEW: Sync velocity for smooth remote car interpolation
 
     // ── Local state ──────────────────────────────────────────────────────────
     private Vector2 _localVelocity   = Vector2.zero;
@@ -84,9 +83,10 @@ public class CarController : NetworkBehaviour
         }
         else
         {
-            _rb.bodyType       = RigidbodyType2D.Kinematic;   // Remote car dùng NetworkTransform
-            _rb.simulated      = true;  // ✅ FIX: Enable physics simulation để collide với obstacles
-            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name} | Physics: Kinematic, Simulated: True");
+            // ✅ FIX: Remote cars = Static (NO physics, chỉ collider + position from NetworkTransform)
+            _rb.bodyType       = RigidbodyType2D.Static;
+            _rb.simulated      = true;  // Collider still active
+            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name} | Physics: Static (position synced via NetworkTransform)");
         }
     }
 
@@ -224,13 +224,8 @@ public class CarController : NetworkBehaviour
             {
                 _rb.linearVelocity = newVelocity;
             }
-
-            // ✅ NEW: Sync velocity to network for remote car interpolation
-            NetworkVelocity = _localVelocity;
         }
-        // ✅ FIX: Remote cars (Kinematic) DO NOT apply velocity
-        // NetworkTransform handles position sync automatically
-        // Kinematic + Simulated: true only for collision detection
+        // ✅ Remote cars (Static): NetworkTransform handles position sync automatically
     }
 
     private void HandleMovement(NetworkInputData input)
