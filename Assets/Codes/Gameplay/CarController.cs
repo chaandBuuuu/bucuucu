@@ -39,6 +39,7 @@ public class CarController : NetworkBehaviour
     [Networked] public  int     LapsCompleted { get; set; }
     [Networked] public  bool    IsFinished    { get; set; }
     [Networked] private float   SpeedMultiplier { get; set; } = 1f;
+    [Networked] public  Vector2 NetworkVelocity { get; set; } = Vector2.zero;  // ✅ NEW: Sync velocity for smooth remote car interpolation
 
     // ── Local state ──────────────────────────────────────────────────────────
     private Vector2 _localVelocity   = Vector2.zero;
@@ -77,21 +78,14 @@ public class CarController : NetworkBehaviour
         // Authority setup cho Rigidbody
         if (HasInputAuthority)
         {
-            // ✅ Owner car: Dynamic physics, enabled simulation
-            _rb.bodyType    = RigidbodyType2D.Dynamic;
-            _rb.simulated   = true;  // ✅ Enable physics simulation for owner
+            _rb.bodyType       = RigidbodyType2D.Dynamic;
             _rb.linearVelocity = Vector2.zero;
-            
-            Debug.Log($"[CarController] ✅ Spawned AUTHORITY - {gameObject.name} | Physics: Dynamic, Simulated: {_rb.simulated}");
+            Debug.Log($"[CarController] ✅ Spawned AUTHORITY - {gameObject.name}");
         }
         else
         {
-            // ✅ Remote car: Kinematic physics, NO simulation (controlled by NetworkTransform only)
-            _rb.bodyType    = RigidbodyType2D.Kinematic;
-            _rb.simulated   = false;  // ✅ Disable physics simulation (no gravity/forces on remote)
-            _rb.linearVelocity = Vector2.zero;
-            
-            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name} | Physics: Kinematic, Simulated: {_rb.simulated}");
+            _rb.bodyType       = RigidbodyType2D.Kinematic;   // Remote car dùng NetworkTransform
+            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name}");
         }
     }
 
@@ -194,27 +188,10 @@ public class CarController : NetworkBehaviour
     {
         if (IsFinished) return;
 
-        // ✅ SAFEGUARD: Ensure remote players have disabled physics
-        if (!HasInputAuthority && _rb.simulated)
-        {
-            Debug.LogWarning($"[CarController] ⚠️ Remote player {gameObject.name} had physics enabled! Disabling...");
-            _rb.simulated = false;
-            _rb.bodyType = RigidbodyType2D.Kinematic;
-        }
-
-        // ✅ SAFEGUARD: Ensure owner has enabled physics
-        if (HasInputAuthority && !_rb.simulated)
-        {
-            Debug.LogWarning($"[CarController] ⚠️ Owner {gameObject.name} had physics disabled! Enabling...");
-            _rb.simulated = true;
-            _rb.bodyType = RigidbodyType2D.Dynamic;
-        }
-
         // Re-enable physics cho owner nếu bị reset
         if (HasInputAuthority && _rb.bodyType == RigidbodyType2D.Kinematic)
         {
             _rb.bodyType       = RigidbodyType2D.Dynamic;
-            _rb.simulated      = true;  // ✅ Ensure simulation is enabled for owner
             _rb.linearVelocity = Vector2.zero;
         }
 
@@ -246,6 +223,9 @@ public class CarController : NetworkBehaviour
             {
                 _rb.linearVelocity = newVelocity;
             }
+
+            // ✅ NEW: Sync velocity to network for remote car interpolation
+            NetworkVelocity = _localVelocity;
         }
     }
 
@@ -383,6 +363,18 @@ public class CarController : NetworkBehaviour
         SpeedMultiplier = multiplier;
         yield return new WaitForSeconds(duration);
         SpeedMultiplier = 1f;
+    }
+
+    // ✅ NEW: Client-side extrapolation for remote cars smooth motion
+    private void LateUpdate()
+    {
+        // Remote cars (non-authority) extrapolate position smooth based on NetworkVelocity
+        if (!HasInputAuthority && !HasStateAuthority && NetworkVelocity.magnitude > 0.1f)
+        {
+            // Predict position based on networked velocity
+            Vector3 predictedPos = transform.position + (Vector3)NetworkVelocity * Time.deltaTime;
+            transform.position = predictedPos;
+        }
     }
 
     // ── RPCs ─────────────────────────────────────────────────────────────────
