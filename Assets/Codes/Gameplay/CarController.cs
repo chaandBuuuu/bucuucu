@@ -79,26 +79,19 @@ public class CarController : NetworkBehaviour
         {
             // ✅ Owner car: Dynamic physics, enabled simulation
             _rb.bodyType    = RigidbodyType2D.Dynamic;
-            _rb.simulated   = true;  // ✅ NEW: Enable physics simulation for owner
+            _rb.simulated   = true;  // ✅ Enable physics simulation for owner
             _rb.linearVelocity = Vector2.zero;
             
-            // ✅ NEW: Enable collider for owner only
-            var collider = GetComponent<Collider2D>();
-            if (collider != null) collider.enabled = true;
-            
-            Debug.Log($"[CarController] ✅ Spawned AUTHORITY - {gameObject.name}");
+            Debug.Log($"[CarController] ✅ Spawned AUTHORITY - {gameObject.name} | Physics: Dynamic, Simulated: {_rb.simulated}");
         }
         else
         {
             // ✅ Remote car: Kinematic physics, NO simulation (controlled by NetworkTransform only)
             _rb.bodyType    = RigidbodyType2D.Kinematic;
-            _rb.simulated   = false;  // ✅ NEW: Disable physics for remote (no collisions = smooth sync)
+            _rb.simulated   = false;  // ✅ Disable physics simulation (no gravity/forces on remote)
+            _rb.linearVelocity = Vector2.zero;
             
-            // ✅ NEW: Disable collider for remote players (prevents phantom collisions)
-            var collider = GetComponent<Collider2D>();
-            if (collider != null) collider.enabled = false;
-            
-            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name}");
+            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name} | Physics: Kinematic, Simulated: {_rb.simulated}");
         }
     }
 
@@ -207,15 +200,21 @@ public class CarController : NetworkBehaviour
             Debug.LogWarning($"[CarController] ⚠️ Remote player {gameObject.name} had physics enabled! Disabling...");
             _rb.simulated = false;
             _rb.bodyType = RigidbodyType2D.Kinematic;
-            var collider = GetComponent<Collider2D>();
-            if (collider != null) collider.enabled = false;
+        }
+
+        // ✅ SAFEGUARD: Ensure owner has enabled physics
+        if (HasInputAuthority && !_rb.simulated)
+        {
+            Debug.LogWarning($"[CarController] ⚠️ Owner {gameObject.name} had physics disabled! Enabling...");
+            _rb.simulated = true;
+            _rb.bodyType = RigidbodyType2D.Dynamic;
         }
 
         // Re-enable physics cho owner nếu bị reset
         if (HasInputAuthority && _rb.bodyType == RigidbodyType2D.Kinematic)
         {
             _rb.bodyType       = RigidbodyType2D.Dynamic;
-            _rb.simulated      = true;  // ✅ NEW: Ensure simulation is enabled for owner
+            _rb.simulated      = true;  // ✅ Ensure simulation is enabled for owner
             _rb.linearVelocity = Vector2.zero;
         }
 
