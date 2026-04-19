@@ -70,7 +70,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CarController
   acceleration: 8
-  maxSpeed: 15
+  maxSpeed: 1000
   friction: 0.95
   driftFriction: 0.92
   rotationSpeed: 180

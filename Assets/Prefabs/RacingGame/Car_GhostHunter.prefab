@@ -70,7 +70,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::CarController
   acceleration: 8
-  maxSpeed: 15
+  maxSpeed: 1000
   friction: 0.95
   driftFriction: 0.92
   rotationSpeed: 180
@@ -141,17 +141,17 @@ BoxCollider2D:
   m_UsedByEffector: 0
   m_CompositeOperation: 0
   m_CompositeOrder: 0
-  m_Offset: {x: 0, y: 0}
+  m_Offset: {x: 0.0015033185, y: 0.0010254383}
   m_SpriteTilingProperty:
     border: {x: 0, y: 0, z: 0, w: 0}
     pivot: {x: 0.5, y: 0.5}
-    oldSize: {x: 2.36, y: 3.86}
+    oldSize: {x: 0.26, y: 0.29}
     newSize: {x: 2.36, y: 3.86}
     adaptiveTilingThreshold: 0.5
     drawMode: 0
     adaptiveTiling: 0
   m_AutoTiling: 0
-  m_Size: {x: 1.2, y: 2}
+  m_Size: {x: 0.2469126, y: 0.29020894}
   m_EdgeRadius: 0
 --- !u!212 &6578701233293332262
 SpriteRenderer:
@@ -202,7 +202,7 @@ SpriteRenderer:
   m_SortingLayer: 4
   m_SortingOrder: 10
   m_MaskInteraction: 0
-  m_Sprite: {fileID: -5996771501304571205, guid: b08610dd5bba398498e89b37e02b09db, type: 3}
+  m_Sprite: {fileID: -4946912821646984652, guid: 12a236eadbc9211469614677a45dc34e, type: 3}
   m_Color: {r: 1, g: 1, b: 1, a: 1}
   m_FlipX: 0
   m_FlipY: 0
