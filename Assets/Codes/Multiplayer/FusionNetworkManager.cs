@@ -145,15 +145,25 @@ public partial class FusionNetworkManager : FusionCallbacksBase
             Runner.AddCallbacks(this);
         }
 
+        // ✅ FIX: Increase server tick rate from 20Hz → 40Hz to reduce lag
+        // Problem: Server was 20Hz, Client 64Hz = 3.2x mismatch = severe jitter
+        // Solution: Match server to 40Hz (25ms per tick) for better sync
+        var simConfig = new SimulationConfig()
+        {
+            TickRate = 40  // 40 Hz = 25ms per network update (was 20Hz = 50ms)
+        };
+
         var args = new StartGameArgs
         {
             GameMode = mode,
             SessionName = sessionName,
             PlayerCount = maxPlayers,
+            SimulationConfig = simConfig,  // ✅ Override with 40Hz tick rate
             SceneManager = Runner.GetComponent<NetworkSceneManagerDefault>() 
                         ?? Runner.gameObject.AddComponent<NetworkSceneManagerDefault>()
         };
 
+        Debug.Log($"[FusionNetworkManager] ✅ Starting with {simConfig.TickRate}Hz server tick rate (was 20Hz)");
         var result = await Runner.StartGame(args);
 
         if (!result.Ok)
