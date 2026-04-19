@@ -79,12 +79,10 @@ public class InputHandler : FusionCallbacksBase
         }
 
         // FIX: Lắng nghe scene load để re-register
+        // CRITICAL: Do NOT call RegisterWhenReady() here!
+        // At Menu scene, LocalPlayer is None → register fails
+        // Only register when in gameplay scene (OnSceneLoaded)
         SceneManager.sceneLoaded += OnSceneLoaded;
-        
-        // ✅ CRITICAL FIX: Register ngay lập tức - KO timeout
-        // Nếu timeout, input callback sẽ NEVER được register
-        // Dẫn đến car không nhận input → jitter về spawn position
-        StartCoroutine(RegisterWhenReady());
     }
 
     private void OnDestroy()
@@ -110,15 +108,20 @@ public class InputHandler : FusionCallbacksBase
             return;
         }
 
-        Debug.Log($"[InputHandler] Scene loaded: {scene.name}, re-registering input...");
+        Debug.Log($"[InputHandler] Scene loaded: {scene.name}, preparing input registration...");
 
-        // Unregister cái cũ trước
-        TryUnregister();
+        // ✅ CRITICAL: Only register for GamePlay scene
+        // Menu/Lobby: LocalPlayer is None → skip registration
+        // GamePlay: LocalPlayer is set → register successfully
+        if (scene.name.ToLower().Contains("gameplay") || scene.name.ToLower().Contains("racing"))
+        {
+            // Unregister cái cũ trước
+            TryUnregister();
 
-        // ✅ CRITICAL: Reset flag and re-register
-        // Important: Don't timeout - keep trying until success
-        _isRegistered = false;
-        StartCoroutine(RegisterWhenReady());
+            // Reset flag and re-register
+            _isRegistered = false;
+            StartCoroutine(RegisterWhenReady());
+        }
     }
 
     private void TryUnregister()
