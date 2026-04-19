@@ -45,6 +45,7 @@ public class CarController : NetworkBehaviour
     private float   _currentRotation = 0f;
     private bool    _isDrifting      = false;
     private bool    _inputEnabled    = true;  // ✅ NEW: Lock/unlock input
+    private Vector3 _previousPos     = Vector3.zero;  // ✅ FIX: Track position for remote car velocity calculation
 
     public event System.Action<int> OnLapCompleted;
     public event System.Action      OnRaceFinished;
@@ -65,6 +66,7 @@ public class CarController : NetworkBehaviour
         // ✅ DISABLED: _powerupInventory = GetComponent<PowerupInventory>() ?? gameObject.AddComponent<PowerupInventory>();
 
         _localVelocity   = Vector2.zero;
+        _previousPos     = transform.position;  // ✅ FIX: Initialize previous position for remote car velocity calc
         _currentRotation = transform.rotation.eulerAngles.z;
         SpeedMultiplier  = 1f;
 
@@ -83,10 +85,12 @@ public class CarController : NetworkBehaviour
         }
         else
         {
-            // ✅ FIX: Remote cars = Static (NO physics, chỉ collider + position from NetworkTransform)
-            _rb.bodyType       = RigidbodyType2D.Static;
-            _rb.simulated      = true;  // Collider still active
-            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name} | Physics: Static (position synced via NetworkTransform)");
+            // ✅ FIX: Change to Dynamic for proper velocity-based movement
+            // NetworkTransform updates position; Dynamic rigidbody calculates velocity from position delta
+            _rb.bodyType  = RigidbodyType2D.Dynamic;
+            _rb.simulated = true;  // Enable physics simulation để collide với obstacles
+            _rb.constraints = RigidbodyConstraints2D.FreezeRotation;
+            Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name} | Physics: Dynamic, Simulated: True, Velocity: Position-based");
         }
     }
 
@@ -189,13 +193,6 @@ public class CarController : NetworkBehaviour
     {
         if (IsFinished) return;
 
-        // Re-enable physics cho owner nếu bị reset
-        if (HasInputAuthority && _rb.bodyType == RigidbodyType2D.Kinematic)
-        {
-            _rb.bodyType       = RigidbodyType2D.Dynamic;
-            _rb.linearVelocity = Vector2.zero;
-        }
-
         // ✅ NEW: Check if input is enabled
         if (!_inputEnabled)
         {
@@ -215,7 +212,7 @@ public class CarController : NetworkBehaviour
             HandlePowerup(input);
         }
 
-        // ✅ Only apply velocity on simulating machine (owner + server)
+        // ── AUTHORITY CARS (Owner/Server) ────────────────────────────────────
         if (HasInputAuthority || HasStateAuthority)
         {
             // ✅ OPTIMIZE: Only update rigidbody if velocity changed significantly
@@ -225,7 +222,15 @@ public class CarController : NetworkBehaviour
                 _rb.linearVelocity = newVelocity;
             }
         }
-        // ✅ Remote cars (Static): NetworkTransform handles position sync automatically
+        // ── REMOTE CARS (Joined Players) ─────────────────────────────────────
+        else
+        {
+            // ✅ FIX: Calculate velocity from position delta (NetworkTransform updates position)
+            // This creates smooth interpolation instead of "jumping" between positions
+            Vector2 deltaPos = (Vector2)(transform.position - _previousPos);
+            _rb.linearVelocity = deltaPos * Runner.TickRate;
+            _previousPos = transform.position;
+        }
     }
 
     private void HandleMovement(NetworkInputData input)
