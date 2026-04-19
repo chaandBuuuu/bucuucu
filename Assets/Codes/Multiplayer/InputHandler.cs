@@ -127,13 +127,14 @@ public class InputHandler : FusionCallbacksBase
 
     private System.Collections.IEnumerator RegisterWhenReady()
     {
-        int maxAttempts = 300; // 5 second timeout (60 frames * 5)
+        int maxAttempts = 600; // 10 second timeout (60 frames * 10) - increased for slower connections
         int attempts = 0;
         
-        // ✅ FIXED: Chờ Runner tồn tại và đang chạy với timeout
+        // ✅ FIXED: Chờ Runner tồn tại và có local player
+        // KO cần check IsRunning vì nó có thể chưa ready ngay lúc scene load
         while (attempts < maxAttempts &&
                (FusionNetworkManager.Instance?.Runner == null ||
-                !FusionNetworkManager.Instance.Runner.IsRunning))
+                FusionNetworkManager.Instance.Runner.LocalPlayer == null))
         {
             attempts++;
             yield return null;
@@ -141,7 +142,7 @@ public class InputHandler : FusionCallbacksBase
 
         if (attempts >= maxAttempts)
         {
-            Debug.LogError("[InputHandler] ❌ TIMEOUT: Runner never became available!");
+            Debug.LogError("[InputHandler] ❌ TIMEOUT: Runner + LocalPlayer never became available!");
             yield break;
         }
 
@@ -149,7 +150,7 @@ public class InputHandler : FusionCallbacksBase
         if (!_isRegistered)
         {
             var runner = FusionNetworkManager.Instance.Runner;
-            if (runner != null && runner.IsRunning)
+            if (runner != null && runner.LocalPlayer != null)
             {
                 runner.AddCallbacks(this);
                 _isRegistered = true;
@@ -157,7 +158,7 @@ public class InputHandler : FusionCallbacksBase
             }
             else
             {
-                Debug.LogError("[InputHandler] ❌ Cannot register: Runner is null or not running!");
+                Debug.LogError("[InputHandler] ❌ Cannot register: Runner or LocalPlayer is null!");
             }
         }
     }
