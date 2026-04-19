@@ -49,6 +49,9 @@ public partial class FusionNetworkManager : FusionCallbacksBase
         }
         Instance = this;
         DontDestroyOnLoad(gameObject);
+        
+        // ✅ NEW: Đảm bảo AudioManager được tạo
+        AudioManager.EnsureExists();
     }
 
     // ================== PLAYER NAME ==================
@@ -184,8 +187,17 @@ public partial class FusionNetworkManager : FusionCallbacksBase
     public override void OnDisconnectedFromServer(NetworkRunner runner, NetDisconnectReason reason) 
         => OnDisconnectedEvent?.Invoke(reason.ToString());
 
-    public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player) 
-        => Debug.Log($"Player joined: {player}");
+    public override void OnPlayerJoined(NetworkRunner runner, PlayerRef player)
+    {
+        Debug.Log($"Player joined: {player}");
+        
+        // ✅ FIX: Apply stored player name for local player
+        if (player == runner.LocalPlayer && !string.IsNullOrEmpty(_storedPlayerName))
+        {
+            _playerNames[player] = _storedPlayerName;
+            Debug.Log($"[FusionNetworkManager] ✅ Applied stored name '{_storedPlayerName}' for local player {player}");
+        }
+    }
 
     public override void OnPlayerLeft(NetworkRunner runner, PlayerRef player) 
         => Debug.Log($"Player left: {player}");

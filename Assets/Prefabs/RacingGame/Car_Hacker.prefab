@@ -77,6 +77,9 @@ MonoBehaviour:
   driftRotationMultiplier: 1.5
   nameplateOffsetY: -1.5
   nameplateFontSize: 4
+  engineSoundClip: {fileID: 8300000, guid: 627af524c3f64fb4aa86153f5c1f03c0, type: 3}
+  driftBrakeSoundClip: {fileID: 0}
+  audioVolume: 0.8
   _IsDrifting: 0
   _LapsCompleted: 0
   _IsFinished: 0

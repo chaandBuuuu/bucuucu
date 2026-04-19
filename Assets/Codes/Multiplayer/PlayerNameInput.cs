@@ -56,9 +56,9 @@ public class PlayerNameInputUI : MonoBehaviour
             return;
         }
 
-        // Lưu tên vào FusionNetworkManager
-        FusionNetworkManager.Instance?.SetPlayerName(playerName);
-        Debug.Log($"[PlayerNameInputUI] Tên đã đặt: {playerName}");
+        // Lưu tên vào FusionNetworkManager (dùng stored vì Runner chưa ready lúc lobby)
+        FusionNetworkManager.Instance?.SetStoredPlayerName(playerName);
+        Debug.Log($"[PlayerNameInputUI] Tên đã lưu: {playerName}");
 
         // Chuyển sang màn hình chọn nhân vật
         if (nameInputPanel      != null) nameInputPanel.SetActive(false);

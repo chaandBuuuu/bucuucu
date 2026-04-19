@@ -19,11 +19,20 @@ public class CarController : NetworkBehaviour
     [SerializeField] private float nameplateOffsetY = -1.5f;  // Vị trí dưới xe
     [SerializeField] private float nameplateFontSize = 4f;
 
+    [Header("Audio")]
+    [SerializeField] private AudioClip engineSoundClip;           // ✅ Âm thanh khi di chuyển
+    [SerializeField] private AudioClip driftBrakeSoundClip;       // ✅ Âm thanh khi cua/giảm tốc
+    [SerializeField] private float audioVolume = 0.8f;            // Volume cho car audio
+
     private Rigidbody2D      _rb;
     private SpriteRenderer   _spriteRenderer;
     private PowerupInventory _powerupInventory;
     private TextMeshPro      _nameplateText;  // ✅ Tên người chơi
     private string           _cachedPlayerName = "";  // ✅ Cache tên người chơi
+    
+    // ✅ Audio Sources cho engine và drift/brake sounds
+    private AudioSource _engineAudioSource;
+    private AudioSource _driftBrakeAudioSource;
 
     // ── Networked state ──────────────────────────────────────────────────────
     [Networked] public  bool    IsDrifting    { get; private set; }
@@ -62,18 +71,33 @@ public class CarController : NetworkBehaviour
         // ✅ NEW: Tạo nameplate cho người chơi
         CreatePlayerNameplate();
 
+        // ✅ NEW: Setup audio sources
+        SetupAudioSources();
+
         // Authority setup cho Rigidbody
         if (HasInputAuthority)
         {
-            _rb.isKinematic    = false;
+            _rb.bodyType       = RigidbodyType2D.Dynamic;
             _rb.linearVelocity = Vector2.zero;
             Debug.Log($"[CarController] ✅ Spawned AUTHORITY - {gameObject.name}");
         }
         else
         {
-            _rb.isKinematic    = true;   // Remote car dùng NetworkTransform
+            _rb.bodyType       = RigidbodyType2D.Kinematic;   // Remote car dùng NetworkTransform
             Debug.Log($"[CarController] ✅ Spawned REMOTE - {gameObject.name}");
         }
+    }
+
+    public override void Despawned(NetworkRunner runner, bool hasState)
+    {
+        // ✅ Stop audio sources khi despawn
+        if (_engineAudioSource != null && _engineAudioSource.isPlaying)
+            _engineAudioSource.Stop();
+        
+        if (_driftBrakeAudioSource != null && _driftBrakeAudioSource.isPlaying)
+            _driftBrakeAudioSource.Stop();
+
+        Debug.Log("[CarController] 🔇 Audio sources stopped on despawn");
     }
 
     /// <summary>
@@ -126,14 +150,47 @@ public class CarController : NetworkBehaviour
         return gameObject.name;
     }
 
+    /// <summary>
+    /// ✅ NEW: Setup audio sources cho engine và drift/brake sounds
+    /// Chỉ setup cho local player (HasInputAuthority)
+    /// </summary>
+    private void SetupAudioSources()
+    {
+        if (!HasInputAuthority) return;  // Chỉ setup cho local player
+
+        // ✅ Engine Audio Source
+        var engineObj = new GameObject("EngineAudio");
+        engineObj.transform.SetParent(transform);
+        engineObj.transform.localPosition = Vector3.zero;
+        _engineAudioSource = engineObj.AddComponent<AudioSource>();
+        _engineAudioSource.clip = engineSoundClip;
+        _engineAudioSource.volume = audioVolume;
+        _engineAudioSource.loop = true;
+        _engineAudioSource.playOnAwake = false;
+        _engineAudioSource.spatialBlend = 0f;  // 2D audio
+
+        // ✅ Drift/Brake Audio Source
+        var driftObj = new GameObject("DriftBrakeAudio");
+        driftObj.transform.SetParent(transform);
+        driftObj.transform.localPosition = Vector3.zero;
+        _driftBrakeAudioSource = driftObj.AddComponent<AudioSource>();
+        _driftBrakeAudioSource.clip = driftBrakeSoundClip;
+        _driftBrakeAudioSource.volume = audioVolume;
+        _driftBrakeAudioSource.loop = true;
+        _driftBrakeAudioSource.playOnAwake = false;
+        _driftBrakeAudioSource.spatialBlend = 0f;  // 2D audio
+
+        Debug.Log("[CarController] ✅ Audio sources setup completed");
+    }
+
     public override void FixedUpdateNetwork()
     {
         if (IsFinished) return;
 
         // Re-enable physics cho owner nếu bị reset
-        if (HasInputAuthority && _rb.isKinematic)
+        if (HasInputAuthority && _rb.bodyType == RigidbodyType2D.Kinematic)
         {
-            _rb.isKinematic    = false;
+            _rb.bodyType       = RigidbodyType2D.Dynamic;
             _rb.linearVelocity = Vector2.zero;
         }
 
@@ -176,14 +233,37 @@ public class CarController : NetworkBehaviour
 
         float effectiveMaxSpeed = maxSpeed * SpeedMultiplier;
 
+        // ✅ FIX: Apply friction ONLY when NOT accelerating (coasting to stop)
         if (moveDir.magnitude > 0.01f)
         {
-            _localVelocity += moveDir.normalized * acceleration * Runner.DeltaTime;
+            // 🏎️ ACCELERATE: Smooth direction blending to avoid snap when turning
+            // When moving perpendicular, blend old direction → new direction smoothly
+            Vector2 currentDir = _localVelocity.magnitude > 0.1f ? _localVelocity.normalized : moveDir.normalized;
+            Vector2 blendedDir = Vector2.Lerp(currentDir, moveDir.normalized, RacingConstants.CAR_DIRECTION_SMOOTHING);
+            
+            // Apply acceleration along blended direction
+            _localVelocity += blendedDir * acceleration * Runner.DeltaTime;
             _localVelocity  = Vector2.ClampMagnitude(_localVelocity, effectiveMaxSpeed);
-        }
 
-        float currentFriction = _isDrifting ? driftFriction : friction;
-        _localVelocity *= currentFriction;
+            // ✅ NEW: Reactive grip when drifting + steering
+            // Nếu player steering lại (opposite/perpendicular direction), apply temporary high-grip friction
+            if (_isDrifting && _localVelocity.magnitude > 5f)
+            {
+                float steeringDot = Vector2.Dot(moveDir.normalized, _localVelocity.normalized);
+                if (steeringDot < 0.7f)  // Steering away from momentum direction
+                {
+                    // Temporary high grip (0.90) to "catch" the drift faster
+                    _localVelocity *= 0.90f;
+                    Debug.Log($"[CarController] 🎯 Reactive grip applied | Steering angle: {Mathf.Acos(steeringDot) * Mathf.Rad2Deg:F0}°");
+                }
+            }
+        }
+        else
+        {
+            // 🛑 COAST: Apply friction only when NOT moving
+            float currentFriction = _isDrifting ? driftFriction : friction;
+            _localVelocity *= currentFriction;
+        }
 
         // Rotation
         if (moveDir.magnitude > 0.01f)
@@ -195,6 +275,56 @@ public class CarController : NetworkBehaviour
 
             _currentRotation = Mathf.LerpAngle(_currentRotation, targetRotation, rotSpeed * Runner.DeltaTime);
             transform.rotation = Quaternion.AngleAxis(_currentRotation, Vector3.forward);
+        }
+
+        // ✅ NEW: Play audio effects based on movement state
+        PlayAudioEffects(moveDir, moveDir.magnitude > 0.01f);
+    }
+
+    /// <summary>
+    /// ✅ NEW: Play audio effects based on movement state
+    /// - Engine sound: phát liên tục khi bấm phím, ngắt khi thả
+    /// - Drift/Brake sound: phát liên tục khi cua/brake, ngắt khi thả
+    /// </summary>
+    private void PlayAudioEffects(Vector2 moveDir, bool isMoving)
+    {
+        if (_engineAudioSource == null || _driftBrakeAudioSource == null) return;
+
+        // ✅ Engine audio: phát khi di chuyển, ngắt khi thả
+        if (isMoving)
+        {
+            if (!_engineAudioSource.isPlaying && _engineAudioSource.clip != null)
+            {
+                _engineAudioSource.Play();
+                Debug.Log("[CarController] 🔊 Engine sound started");
+            }
+        }
+        else
+        {
+            if (_engineAudioSource.isPlaying)
+            {
+                _engineAudioSource.Stop();
+                Debug.Log("[CarController] 🔇 Engine sound stopped");
+            }
+        }
+
+        // ✅ Drift/Brake audio: phát khi cua hoặc brake, ngắt khi thả
+        bool isDriftingOrBraking = _isDrifting || (!isMoving && _localVelocity.magnitude > 5f);
+        if (isDriftingOrBraking)
+        {
+            if (!_driftBrakeAudioSource.isPlaying && _driftBrakeAudioSource.clip != null)
+            {
+                _driftBrakeAudioSource.Play();
+                Debug.Log("[CarController] 🔊 Drift/Brake sound started");
+            }
+        }
+        else
+        {
+            if (_driftBrakeAudioSource.isPlaying)
+            {
+                _driftBrakeAudioSource.Stop();
+                Debug.Log("[CarController] 🔇 Drift/Brake sound stopped");
+            }
         }
     }
 
