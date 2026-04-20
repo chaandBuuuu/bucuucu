@@ -33,6 +33,9 @@ public class RaceUI : MonoBehaviour
     private bool _raceFinished = false;
     private float _lastUIUpdateTime = 0f;
     private const float UI_UPDATE_INTERVAL = 0.1f;  // ✅ Update UI every 100ms instead of every frame
+    
+    // ✅ Cache để track khi finish countdown bắt đầu
+    private float _lastFinishCountdown = -1f;
 
     private void Start()
     {
@@ -207,6 +210,13 @@ public class RaceUI : MonoBehaviour
         float finishCountdown = _raceManager.FinishCountdown;
         if (finishCountdown >= 0f)
         {
+            // ✅ Track khi countdown bắt đầu
+            if (_lastFinishCountdown < 0f)
+            {
+                Debug.Log($"[RaceUI] ✅ Finish countdown started: {finishCountdown:F1}s");
+            }
+            _lastFinishCountdown = finishCountdown;
+            
             countdownText.gameObject.SetActive(true);
             countdownText.text = $"⏳ Finish in {finishCountdown:F1}s";
             countdownText.color = finishCountdown < 5f ? Color.yellow : Color.white;
@@ -214,6 +224,11 @@ public class RaceUI : MonoBehaviour
         }
         else
         {
+            if (_lastFinishCountdown >= 0f)
+            {
+                Debug.Log($"[RaceUI] ⏳ Countdown finished");
+                _lastFinishCountdown = -1f;
+            }
             countdownText.gameObject.SetActive(false);
         }
     }

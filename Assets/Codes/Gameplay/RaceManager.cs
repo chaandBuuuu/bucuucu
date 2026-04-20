@@ -37,6 +37,10 @@ public class RaceManager : NetworkBehaviour
     [Networked, OnChangedRender(nameof(OnPlayerFinishedChanged))]
     private NetworkId _lastFinishedCarId { get; set; }
 
+    // ✅ Trigger khi finish countdown bắt đầu (để clients nhận thông báo ngay)
+    [Networked, OnChangedRender(nameof(OnFinishCountdownStarted))]
+    private bool _finishCountdownStartedTrigger { get; set; }
+
     // ── Local ────────────────────────────────────────────────────────────────
     private Dictionary<NetworkId, float> _finishTimes     = new Dictionary<NetworkId, float>();
     private Dictionary<NetworkId, float> _finishDistances = new Dictionary<NetworkId, float>();
@@ -49,6 +53,10 @@ public class RaceManager : NetworkBehaviour
     private float                        _finishCountdownTimer = 0f;
     private float                        _lastCarCacheTime = 0f;
     private const float                  CAR_CACHE_INTERVAL = 0.5f;
+
+    // ✅ Cache race state cho late joiners
+    private List<(CarController car, int position, float finishTime, float finishDistance)> _cachedFinalRankings = null;
+    private CarController _cachedWinner = null;
 
     public event System.Action                                           OnRaceStart;
     public event System.Action<CarController>                            OnRaceEnd;
@@ -71,8 +79,24 @@ public class RaceManager : NetworkBehaviour
             RaceTimer        = 0f;
             CountdownCounter = -1;
             FinishCountdown  = -1f;
+            ResetCachedState();
             Debug.Log("[RaceManager] ✅ Initialized");
         }
+    }
+
+    // ✅ Reset cached state cho race mới
+    private void ResetCachedState()
+    {
+        _cachedFinalRankings = null;
+        _cachedWinner = null;
+        _carFinished.Clear();
+        _finishTimes.Clear();
+        _finishDistances.Clear();
+        _firstFinisher = null;
+        _winner = null;
+        _finishCountdownTimer = 0f;
+        _countdownTimer = 0f;
+        _finishCountdownStartedTrigger = false;
     }
 
     // ── OnChangedRender callbacks ─────────────────────────────────────────────
@@ -105,6 +129,13 @@ public class RaceManager : NetworkBehaviour
                 return;
             }
         }
+    }
+
+    // ✅ Callback khi finish countdown bắt đầu (clients nhận ngay lập tức)
+    private void OnFinishCountdownStarted()
+    {
+        if (!_finishCountdownStartedTrigger) return;
+        Debug.Log("[RaceManager] ⏳ Finish countdown started → client");
     }
 
     // ── FixedUpdateNetwork ────────────────────────────────────────────────────
@@ -226,6 +257,8 @@ public class RaceManager : NetworkBehaviour
             _firstFinisher        = car;
             FinishCountdown       = finishCountdownDuration;
             _finishCountdownTimer = 0f;
+            // ✅ Trigger clients để họ nhận countdown ngay lập tức
+            _finishCountdownStartedTrigger = true;
         }
     }
 
@@ -240,6 +273,10 @@ public class RaceManager : NetworkBehaviour
 
         var rankings = CalculateFinalRankings();
         if (rankings.Count > 0) _winner = rankings[0].car;
+
+        // ✅ Cache state cho late joiners
+        _cachedFinalRankings = rankings;
+        _cachedWinner = _winner;
 
         // Host fire trực tiếp
         OnFinalRankings?.Invoke(rankings);
@@ -288,4 +325,8 @@ public class RaceManager : NetworkBehaviour
         car?.Object != null && _finishTimes.TryGetValue(car.Object.Id, out float t) ? t : -1f;
     public CarController GetFirstFinisher() => _firstFinisher;
     public bool          IsSpawned          => _isSpawned;
+
+    // ✅ Late-joiner support: Cung cấp cached state
+    public CarController GetCachedWinner() => _cachedWinner;
+    public List<(CarController, int, float, float)> GetCachedFinalRankings() => _cachedFinalRankings;
 }

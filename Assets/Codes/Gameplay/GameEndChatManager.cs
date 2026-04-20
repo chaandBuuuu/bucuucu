@@ -82,6 +82,23 @@ public class GameEndChatManager : MonoBehaviour
         RaceManager.Instance.OnRaceEnd       += OnRaceEnd;
         RaceManager.Instance.OnFinalRankings += OnFinalRankings;
         Debug.Log("[GameEndChatManager] ✅ Subscribed to RaceManager events");
+
+        // ✅ Late-joiner replay: Nếu race đã kết thúc trước khi subscribe, replay sự kiện
+        if (RaceManager.Instance.RaceFinished)
+        {
+            Debug.Log("[GameEndChatManager] ⚡ Race already finished - replaying events for late joiner");
+            var rankings = RaceManager.Instance.GetCachedFinalRankings();
+            var winner = RaceManager.Instance.GetCachedWinner();
+
+            if (rankings != null && rankings.Count > 0)
+            {
+                OnFinalRankings(rankings);
+            }
+            if (winner != null)
+            {
+                OnRaceEnd(winner);
+            }
+        }
     }
 
     private void OnDestroy()
